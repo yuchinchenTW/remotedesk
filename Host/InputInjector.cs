@@ -63,30 +63,15 @@ namespace SimpleRemote.Host
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetCursorPos(int x, int y);
+
         public static void MouseMove(int x, int y)
         {
             var bounds = Screen.PrimaryScreen.Bounds;
             var safeX = Clamp(x, 0, Math.Max(0, bounds.Width - 1));
             var safeY = Clamp(y, 0, Math.Max(0, bounds.Height - 1));
-
-            var absoluteX = bounds.Width <= 1 ? 0 : (safeX * 65535) / (bounds.Width - 1);
-            var absoluteY = bounds.Height <= 1 ? 0 : (safeY * 65535) / (bounds.Height - 1);
-
-            var input = new INPUT
-            {
-                type = InputMouse,
-                U = new InputUnion
-                {
-                    mi = new MOUSEINPUT
-                    {
-                        dx = absoluteX,
-                        dy = absoluteY,
-                        dwFlags = MouseEventMove | MouseEventAbsolute
-                    }
-                }
-            };
-
-            Send(input);
+            SetCursorPos(safeX, safeY);
         }
 
         public static void MouseButton(MouseButtonCode button, bool isDown)

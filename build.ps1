@@ -21,6 +21,7 @@ $refs = @(
 
 $shared = @(
     (Join-Path $PSScriptRoot "Shared\Protocol.cs")
+    (Join-Path $PSScriptRoot "Shared\DpiAwareness.cs")
 )
 
 $hostSources = @(
