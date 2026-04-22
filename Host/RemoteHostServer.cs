@@ -198,7 +198,7 @@ namespace SimpleRemote.Host
                 {
                     try
                     {
-                        ScreenStreamer.StreamVirtualDesktop(stream, writeSync, _sessionTokenSource.Token, 8);
+                        ScreenStreamer.StreamVirtualDesktop(stream, writeSync, _sessionTokenSource.Token, 20);
                     }
                     catch
                     {

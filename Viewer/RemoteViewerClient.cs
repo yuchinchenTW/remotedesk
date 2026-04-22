@@ -12,9 +12,11 @@ namespace SimpleRemote.Viewer
         private readonly Action<string> _statusCallback;
         private readonly Action<Bitmap, int, int> _frameCallback;
         private readonly object _writeSync = new object();
+        private readonly LatestFrameStore _latestFrame = new LatestFrameStore();
 
         private TcpClient _client;
         private Thread _receiveThread;
+        private Thread _decodeThread;
         private volatile bool _running;
 
         public RemoteViewerClient(Action<string> statusCallback, Action<Bitmap, int, int> frameCallback)
@@ -66,6 +68,11 @@ namespace SimpleRemote.Viewer
             _receiveThread = new Thread(ReceiveLoop);
             _receiveThread.IsBackground = true;
             _receiveThread.Start();
+
+            _decodeThread = new Thread(DecodeLoop);
+            _decodeThread.IsBackground = true;
+            _decodeThread.Start();
+
             _statusCallback("Connected to " + host + ":" + port + ".");
         }
 
@@ -76,7 +83,9 @@ namespace SimpleRemote.Viewer
 
         public void Disconnect()
         {
+            var wasRunning = _running;
             _running = false;
+            _latestFrame.Complete();
 
             if (_client != null)
             {
@@ -89,6 +98,23 @@ namespace SimpleRemote.Viewer
                 }
 
                 _client = null;
+            }
+
+            if (_receiveThread != null && _receiveThread != Thread.CurrentThread)
+            {
+                _receiveThread.Join(500);
+                _receiveThread = null;
+            }
+
+            if (_decodeThread != null && _decodeThread != Thread.CurrentThread)
+            {
+                _decodeThread.Join(500);
+                _decodeThread = null;
+            }
+
+            if (wasRunning)
+            {
+                _statusCallback("Disconnected.");
             }
         }
 
@@ -172,12 +198,7 @@ namespace SimpleRemote.Viewer
                         var height = reader.ReadInt32();
                         var imageLength = reader.ReadInt32();
                         var imageBytes = reader.ReadBytes(imageLength);
-
-                        using (var imageStream = new MemoryStream(imageBytes))
-                        using (var image = Image.FromStream(imageStream))
-                        {
-                            _frameCallback(new Bitmap(image), width, height);
-                        }
+                        _latestFrame.Update(width, height, imageBytes);
                     }
                 }
             }
@@ -190,9 +211,97 @@ namespace SimpleRemote.Viewer
             }
             finally
             {
-                _running = false;
-                _statusCallback("Disconnected.");
                 Disconnect();
+            }
+        }
+
+        private void DecodeLoop()
+        {
+            while (_running)
+            {
+                FrameData frame;
+                if (!_latestFrame.WaitAndTake(out frame))
+                {
+                    return;
+                }
+
+                try
+                {
+                    using (var imageStream = new MemoryStream(frame.JpegBytes))
+                    using (var image = Image.FromStream(imageStream))
+                    {
+                        _frameCallback(new Bitmap(image), frame.DesktopWidth, frame.DesktopHeight);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private sealed class FrameData
+        {
+            public int DesktopWidth;
+            public int DesktopHeight;
+            public byte[] JpegBytes;
+        }
+
+        private sealed class LatestFrameStore
+        {
+            private readonly object _sync = new object();
+            private readonly AutoResetEvent _available = new AutoResetEvent(false);
+            private volatile bool _completed;
+            private FrameData _pending;
+
+            public void Update(int desktopWidth, int desktopHeight, byte[] jpegBytes)
+            {
+                if (_completed)
+                {
+                    return;
+                }
+
+                lock (_sync)
+                {
+                    _pending = new FrameData
+                    {
+                        DesktopWidth = desktopWidth,
+                        DesktopHeight = desktopHeight,
+                        JpegBytes = jpegBytes
+                    };
+                }
+
+                _available.Set();
+            }
+
+            public bool WaitAndTake(out FrameData frame)
+            {
+                frame = null;
+
+                while (true)
+                {
+                    lock (_sync)
+                    {
+                        if (_pending != null)
+                        {
+                            frame = _pending;
+                            _pending = null;
+                            return true;
+                        }
+
+                        if (_completed)
+                        {
+                            return false;
+                        }
+                    }
+
+                    _available.WaitOne();
+                }
+            }
+
+            public void Complete()
+            {
+                _completed = true;
+                _available.Set();
             }
         }
     }
