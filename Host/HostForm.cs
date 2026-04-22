@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Text;
 using System.Windows.Forms;
 
 namespace SimpleRemote.Host
@@ -15,7 +17,8 @@ namespace SimpleRemote.Host
         private readonly Button _stopButton;
         private readonly Label _statusLabel;
         private readonly Label _clientLabel;
-        private readonly Label _ipLabel;
+        private readonly TextBox _ipTextBox;
+        private readonly Label _displayLabel;
 
         private RemoteHostServer _server;
 
@@ -23,7 +26,7 @@ namespace SimpleRemote.Host
         {
             Text = "Simple Remote Host";
             Width = 520;
-            Height = 260;
+            Height = 360;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -107,13 +110,25 @@ namespace SimpleRemote.Host
                 Text = "Viewer: No viewer connected."
             };
 
-            _ipLabel = new Label
+            _displayLabel = new Label
             {
                 Left = 20,
                 Top = 202,
                 Width = 460,
                 Height = 22,
-                Text = "Local IPv4: " + GetBestLocalIp()
+                Text = "Display: " + GetDisplaySummary()
+            };
+
+            _ipTextBox = new TextBox
+            {
+                Left = 20,
+                Top = 228,
+                Width = 460,
+                Height = 82,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Text = BuildLocalIpText()
             };
 
             Controls.Add(instructions);
@@ -125,7 +140,8 @@ namespace SimpleRemote.Host
             Controls.Add(_stopButton);
             Controls.Add(_statusLabel);
             Controls.Add(_clientLabel);
-            Controls.Add(_ipLabel);
+            Controls.Add(_displayLabel);
+            Controls.Add(_ipTextBox);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -161,7 +177,8 @@ namespace SimpleRemote.Host
                 _stopButton.Enabled = true;
                 _portTextBox.Enabled = false;
                 _passwordTextBox.Enabled = false;
-                _ipLabel.Text = "Local IPv4: " + GetBestLocalIp();
+                _displayLabel.Text = "Display: " + GetDisplaySummary();
+                _ipTextBox.Text = BuildLocalIpText();
             }
             catch (Exception ex)
             {
@@ -188,6 +205,8 @@ namespace SimpleRemote.Host
             _passwordTextBox.Enabled = true;
             _statusLabel.Text = "Status: Stopped.";
             _clientLabel.Text = "Viewer: No viewer connected.";
+            _displayLabel.Text = "Display: " + GetDisplaySummary();
+            _ipTextBox.Text = BuildLocalIpText();
         }
 
         private void UpdateStatus(string text)
@@ -222,8 +241,35 @@ namespace SimpleRemote.Host
             _clientLabel.Text = "Viewer: " + text;
         }
 
-        private static string GetBestLocalIp()
+        private static string BuildLocalIpText()
         {
+            var addresses = GetLocalIpv4Addresses();
+            if (addresses.Count == 0)
+            {
+                return "Local IPv4: Unavailable";
+            }
+
+            var builder = new StringBuilder();
+            builder.AppendLine("Local IPv4 addresses:");
+
+            foreach (var address in addresses)
+            {
+                builder.AppendLine(address);
+            }
+
+            return builder.ToString().TrimEnd();
+        }
+
+        private static string GetDisplaySummary()
+        {
+            var virtualBounds = SystemInformation.VirtualScreen;
+            return Screen.AllScreens.Length + " screen(s), virtual desktop " + virtualBounds.Width + "x" + virtualBounds.Height + ".";
+        }
+
+        private static List<string> GetLocalIpv4Addresses()
+        {
+            var results = new List<string>();
+
             try
             {
                 var adapters = NetworkInterface.GetAllNetworkInterfaces()
@@ -231,13 +277,17 @@ namespace SimpleRemote.Host
 
                 foreach (var adapter in adapters)
                 {
-                    var ip = adapter.GetIPProperties().UnicastAddresses
+                    var addresses = adapter.GetIPProperties().UnicastAddresses
                         .Select(address => address.Address)
-                        .FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address));
+                        .Where(address => address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(address))
+                        .Select(address => address.ToString());
 
-                    if (ip != null)
+                    foreach (var address in addresses)
                     {
-                        return ip.ToString();
+                        if (!results.Contains(address))
+                        {
+                            results.Add(address);
+                        }
                     }
                 }
             }
@@ -245,7 +295,8 @@ namespace SimpleRemote.Host
             {
             }
 
-            return "Unavailable";
+            results.Sort(StringComparer.Ordinal);
+            return results;
         }
     }
 }

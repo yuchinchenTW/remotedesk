@@ -10,7 +10,6 @@ namespace SimpleRemote.Host
         private const uint InputMouse = 0;
         private const uint InputKeyboard = 1;
 
-        private const uint MouseEventMove = 0x0001;
         private const uint MouseEventLeftDown = 0x0002;
         private const uint MouseEventLeftUp = 0x0004;
         private const uint MouseEventRightDown = 0x0008;
@@ -18,7 +17,6 @@ namespace SimpleRemote.Host
         private const uint MouseEventMiddleDown = 0x0020;
         private const uint MouseEventMiddleUp = 0x0040;
         private const uint MouseEventWheel = 0x0800;
-        private const uint MouseEventAbsolute = 0x8000;
 
         private const uint KeyEventKeyUp = 0x0002;
 
@@ -68,9 +66,9 @@ namespace SimpleRemote.Host
 
         public static void MouseMove(int x, int y)
         {
-            var bounds = Screen.PrimaryScreen.Bounds;
-            var safeX = Clamp(x, 0, Math.Max(0, bounds.Width - 1));
-            var safeY = Clamp(y, 0, Math.Max(0, bounds.Height - 1));
+            var bounds = SystemInformation.VirtualScreen;
+            var safeX = Clamp(bounds.Left + x, bounds.Left, bounds.Right - 1);
+            var safeY = Clamp(bounds.Top + y, bounds.Top, bounds.Bottom - 1);
             SetCursorPos(safeX, safeY);
         }
 

@@ -117,7 +117,7 @@ namespace SimpleRemote.Viewer
                 Top = 64,
                 Width = 1080,
                 Height = 18,
-                Text = "Click inside the remote image before using the keyboard. This MVP controls only the primary monitor."
+                Text = "Click inside the remote image before using the keyboard. Multi-monitor hosts are shown as one combined desktop."
             };
 
             topPanel.Controls.Add(hostLabel);

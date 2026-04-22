@@ -14,13 +14,13 @@ namespace SimpleRemote.Host
     {
         private static readonly ImageCodecInfo JpegCodec = ImageCodecInfo.GetImageEncoders().FirstOrDefault(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
 
-        public static void StreamPrimaryScreen(NetworkStream stream, object writeSync, CancellationToken token, int fps)
+        public static void StreamVirtualDesktop(NetworkStream stream, object writeSync, CancellationToken token, int fps)
         {
             var frameDelay = Math.Max(40, 1000 / Math.Max(1, fps));
 
             while (!token.IsCancellationRequested)
             {
-                var bounds = Screen.PrimaryScreen.Bounds;
+                var bounds = SystemInformation.VirtualScreen;
                 var jpeg = Capture(bounds);
 
                 Protocol.SendMessage(stream, writeSync, MessageType.Frame, delegate(BinaryWriter writer)

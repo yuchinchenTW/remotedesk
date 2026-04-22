@@ -191,14 +191,14 @@ namespace SimpleRemote.Host
                     return;
                 }
 
-                _statusCallback("Streaming screen to " + client.Client.RemoteEndPoint + ".");
+                _statusCallback("Streaming virtual desktop to " + client.Client.RemoteEndPoint + ".");
 
                 _sessionTokenSource = new CancellationTokenSource();
                 var senderThread = new Thread(delegate()
                 {
                     try
                     {
-                        ScreenStreamer.StreamPrimaryScreen(stream, writeSync, _sessionTokenSource.Token, 8);
+                        ScreenStreamer.StreamVirtualDesktop(stream, writeSync, _sessionTokenSource.Token, 8);
                     }
                     catch
                     {
