@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using SimpleRemote.Shared;
 
@@ -13,17 +15,21 @@ namespace SimpleRemote.Viewer
         private readonly Button _connectButton;
         private readonly Button _disconnectButton;
         private readonly PictureBox _pictureBox;
+        private readonly ListView _hostsListView;
         private readonly Label _statusLabel;
         private readonly Label _infoLabel;
+        private readonly Timer _discoveryRefreshTimer;
 
         private RemoteViewerClient _client;
+        private HostDiscoveryListener _discoveryListener;
         private Bitmap _currentFrame;
         private Size _remoteSize;
+        private readonly Dictionary<string, DiscoveredHostInfo> _discoveredHosts = new Dictionary<string, DiscoveredHostInfo>();
 
         public ViewerForm()
         {
             Text = "Simple Remote Viewer";
-            Width = 1120;
+            Width = 1320;
             Height = 760;
             StartPosition = FormStartPosition.CenterScreen;
             KeyPreview = true;
@@ -31,7 +37,7 @@ namespace SimpleRemote.Viewer
             var topPanel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 84
+                Height = 92
             };
 
             var hostLabel = new Label
@@ -115,9 +121,9 @@ namespace SimpleRemote.Viewer
             {
                 Left = 12,
                 Top = 64,
-                Width = 1080,
+                Width = 1280,
                 Height = 18,
-                Text = "Click inside the remote image before using the keyboard. Ctrl+V sends local clipboard text to the remote PC."
+                Text = "Hosts on the same LAN auto-appear on the right. Ctrl+V sends local clipboard text to the remote PC."
             };
 
             topPanel.Controls.Add(hostLabel);
@@ -130,6 +136,22 @@ namespace SimpleRemote.Viewer
             topPanel.Controls.Add(_disconnectButton);
             topPanel.Controls.Add(_statusLabel);
             topPanel.Controls.Add(_infoLabel);
+
+            _hostsListView = new ListView
+            {
+                Dock = DockStyle.Right,
+                Width = 360,
+                View = View.Details,
+                FullRowSelect = true,
+                GridLines = true,
+                HideSelection = false
+            };
+            _hostsListView.Columns.Add("Name", 130);
+            _hostsListView.Columns.Add("IP", 110);
+            _hostsListView.Columns.Add("Port", 50);
+            _hostsListView.Columns.Add("Seen", 55);
+            _hostsListView.SelectedIndexChanged += HostsListView_SelectedIndexChanged;
+            _hostsListView.DoubleClick += HostsListView_DoubleClick;
 
             _pictureBox = new PictureBox
             {
@@ -144,16 +166,37 @@ namespace SimpleRemote.Viewer
             _pictureBox.MouseWheel += PictureBox_MouseWheel;
             _pictureBox.MouseClick += PictureBox_MouseClick;
 
-            Controls.Add(_pictureBox);
             Controls.Add(topPanel);
+            Controls.Add(_pictureBox);
+            Controls.Add(_hostsListView);
 
             KeyDown += ViewerForm_KeyDown;
             KeyUp += ViewerForm_KeyUp;
             FormClosed += ViewerForm_FormClosed;
+
+            _discoveryListener = new HostDiscoveryListener(OnHostDiscovered);
+            _discoveryListener.Start();
+
+            _discoveryRefreshTimer = new Timer();
+            _discoveryRefreshTimer.Interval = 1000;
+            _discoveryRefreshTimer.Tick += DiscoveryRefreshTimer_Tick;
+            _discoveryRefreshTimer.Start();
         }
 
         private void ViewerForm_FormClosed(object sender, FormClosedEventArgs e)
         {
+            if (_discoveryRefreshTimer != null)
+            {
+                _discoveryRefreshTimer.Stop();
+                _discoveryRefreshTimer.Dispose();
+            }
+
+            if (_discoveryListener != null)
+            {
+                _discoveryListener.Dispose();
+                _discoveryListener = null;
+            }
+
             if (_client != null)
             {
                 _client.Dispose();
@@ -164,6 +207,11 @@ namespace SimpleRemote.Viewer
                 _currentFrame.Dispose();
                 _currentFrame = null;
             }
+        }
+
+        private void DiscoveryRefreshTimer_Tick(object sender, EventArgs e)
+        {
+            RefreshDiscoveredHosts();
         }
 
         private void ConnectButton_Click(object sender, EventArgs e)
@@ -202,6 +250,34 @@ namespace SimpleRemote.Viewer
         private void DisconnectButton_Click(object sender, EventArgs e)
         {
             ResetConnection();
+        }
+
+        private void HostsListView_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_hostsListView.SelectedItems.Count == 0)
+            {
+                return;
+            }
+
+            var item = _hostsListView.SelectedItems[0];
+            var info = item.Tag as DiscoveredHostInfo;
+            if (info == null)
+            {
+                return;
+            }
+
+            _hostTextBox.Text = info.HostAddress;
+            _portTextBox.Text = info.HostPort.ToString();
+        }
+
+        private void HostsListView_DoubleClick(object sender, EventArgs e)
+        {
+            if (_hostsListView.SelectedItems.Count == 0 || !_connectButton.Enabled)
+            {
+                return;
+            }
+
+            ConnectButton_Click(sender, e);
         }
 
         private void PictureBox_MouseClick(object sender, MouseEventArgs e)
@@ -303,6 +379,23 @@ namespace SimpleRemote.Viewer
             }
         }
 
+        private void OnHostDiscovered(DiscoveredHostInfo host)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action<DiscoveredHostInfo>(OnHostDiscovered), host);
+                return;
+            }
+
+            _discoveredHosts[BuildHostKey(host)] = host;
+            RefreshDiscoveredHosts();
+        }
+
         private void UpdateStatus(string text)
         {
             if (IsDisposed)
@@ -368,6 +461,68 @@ namespace SimpleRemote.Viewer
             _hostTextBox.Enabled = true;
             _portTextBox.Enabled = true;
             _passwordTextBox.Enabled = true;
+        }
+
+        private void RefreshDiscoveredHosts()
+        {
+            var now = DateTime.UtcNow;
+            var expiredKeys = _discoveredHosts
+                .Where(pair => (now - pair.Value.LastSeenUtc).TotalMilliseconds > DiscoveryProtocol.HostTimeoutMs)
+                .Select(pair => pair.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                _discoveredHosts.Remove(key);
+            }
+
+            var selectedKey = _hostsListView.SelectedItems.Count > 0
+                ? _hostsListView.SelectedItems[0].Name
+                : null;
+
+            _hostsListView.BeginUpdate();
+            _hostsListView.Items.Clear();
+
+            foreach (var host in _discoveredHosts.Values
+                .OrderBy(host => GetHostDisplayName(host), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(host => host.HostAddress, StringComparer.Ordinal))
+            {
+                var seenSeconds = Math.Max(0, (int)Math.Round((now - host.LastSeenUtc).TotalSeconds));
+                var item = new ListViewItem(GetHostDisplayName(host));
+                item.Name = BuildHostKey(host);
+                item.Tag = host;
+                item.SubItems.Add(host.HostAddress);
+                item.SubItems.Add(host.HostPort.ToString());
+                item.SubItems.Add(seenSeconds + "s");
+                _hostsListView.Items.Add(item);
+
+                if (!string.IsNullOrEmpty(selectedKey) && string.Equals(selectedKey, item.Name, StringComparison.Ordinal))
+                {
+                    item.Selected = true;
+                }
+            }
+
+            _hostsListView.EndUpdate();
+        }
+
+        private static string BuildHostKey(DiscoveredHostInfo host)
+        {
+            return host.HostAddress + ":" + host.HostPort;
+        }
+
+        private static string GetHostDisplayName(DiscoveredHostInfo host)
+        {
+            if (!string.IsNullOrWhiteSpace(host.DisplayName))
+            {
+                return host.DisplayName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(host.MachineName))
+            {
+                return host.MachineName;
+            }
+
+            return host.HostAddress;
         }
 
         private bool TryTranslatePoint(Point localPoint, out Point remotePoint)

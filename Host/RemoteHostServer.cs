@@ -16,7 +16,9 @@ namespace SimpleRemote.Host
         private Thread _acceptThread;
         private TcpClient _activeClient;
         private CancellationTokenSource _sessionTokenSource;
+        private HostDiscoveryBroadcaster _discoveryBroadcaster;
         private volatile bool _running;
+        private string _displayName;
         private string _password;
         private int _port;
 
@@ -31,7 +33,7 @@ namespace SimpleRemote.Host
             get { return _running; }
         }
 
-        public void Start(int port, string password)
+        public void Start(int port, string password, string displayName)
         {
             if (_running)
             {
@@ -40,8 +42,11 @@ namespace SimpleRemote.Host
 
             _password = password ?? string.Empty;
             _port = port;
+            _displayName = displayName ?? string.Empty;
             _listener = new TcpListener(IPAddress.Any, port);
             _listener.Start();
+            _discoveryBroadcaster = new HostDiscoveryBroadcaster();
+            _discoveryBroadcaster.Start(port, _displayName);
             _running = true;
             _acceptThread = new Thread(AcceptLoop);
             _acceptThread.IsBackground = true;
@@ -56,6 +61,12 @@ namespace SimpleRemote.Host
             if (_sessionTokenSource != null)
             {
                 _sessionTokenSource.Cancel();
+            }
+
+            if (_discoveryBroadcaster != null)
+            {
+                _discoveryBroadcaster.Dispose();
+                _discoveryBroadcaster = null;
             }
 
             if (_activeClient != null)

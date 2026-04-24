@@ -13,6 +13,7 @@ namespace SimpleRemote.Host
     {
         private readonly TextBox _portTextBox;
         private readonly TextBox _passwordTextBox;
+        private readonly TextBox _displayNameTextBox;
         private readonly Button _startButton;
         private readonly Button _stopButton;
         private readonly Label _statusLabel;
@@ -26,7 +27,7 @@ namespace SimpleRemote.Host
         {
             Text = "Simple Remote Host";
             Width = 520;
-            Height = 360;
+            Height = 400;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -37,7 +38,7 @@ namespace SimpleRemote.Host
                 Top = 18,
                 Width = 460,
                 Height = 36,
-                Text = "LAN-only MVP. The viewer must use the same port and password. Run as administrator if you need to control elevated windows."
+                Text = "LAN-only MVP. Viewer instances on the same LAN auto-discover this host over UDP. Run as administrator if you need to control elevated windows."
             };
 
             var portLabel = new Label
@@ -73,6 +74,22 @@ namespace SimpleRemote.Host
                 Text = "changeme"
             };
 
+            var displayNameLabel = new Label
+            {
+                Left = 20,
+                Top = 144,
+                Width = 80,
+                Text = "Name"
+            };
+
+            _displayNameTextBox = new TextBox
+            {
+                Left = 100,
+                Top = 140,
+                Width = 220,
+                Text = Environment.MachineName
+            };
+
             _startButton = new Button
             {
                 Left = 350,
@@ -95,7 +112,7 @@ namespace SimpleRemote.Host
             _statusLabel = new Label
             {
                 Left = 20,
-                Top = 150,
+                Top = 188,
                 Width = 460,
                 Height = 22,
                 Text = "Status: Idle."
@@ -104,7 +121,7 @@ namespace SimpleRemote.Host
             _clientLabel = new Label
             {
                 Left = 20,
-                Top = 176,
+                Top = 214,
                 Width = 460,
                 Height = 22,
                 Text = "Viewer: No viewer connected."
@@ -113,7 +130,7 @@ namespace SimpleRemote.Host
             _displayLabel = new Label
             {
                 Left = 20,
-                Top = 202,
+                Top = 240,
                 Width = 460,
                 Height = 22,
                 Text = "Display: " + GetDisplaySummary()
@@ -122,9 +139,9 @@ namespace SimpleRemote.Host
             _ipTextBox = new TextBox
             {
                 Left = 20,
-                Top = 228,
+                Top = 266,
                 Width = 460,
-                Height = 82,
+                Height = 90,
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
@@ -136,6 +153,8 @@ namespace SimpleRemote.Host
             Controls.Add(_portTextBox);
             Controls.Add(passwordLabel);
             Controls.Add(_passwordTextBox);
+            Controls.Add(displayNameLabel);
+            Controls.Add(_displayNameTextBox);
             Controls.Add(_startButton);
             Controls.Add(_stopButton);
             Controls.Add(_statusLabel);
@@ -172,11 +191,12 @@ namespace SimpleRemote.Host
             try
             {
                 _server = new RemoteHostServer(UpdateStatus, UpdateClient);
-                _server.Start(port, _passwordTextBox.Text);
+                _server.Start(port, _passwordTextBox.Text, _displayNameTextBox.Text);
                 _startButton.Enabled = false;
                 _stopButton.Enabled = true;
                 _portTextBox.Enabled = false;
                 _passwordTextBox.Enabled = false;
+                _displayNameTextBox.Enabled = false;
                 _displayLabel.Text = "Display: " + GetDisplaySummary();
                 _ipTextBox.Text = BuildLocalIpText();
             }
@@ -203,6 +223,7 @@ namespace SimpleRemote.Host
             _stopButton.Enabled = false;
             _portTextBox.Enabled = true;
             _passwordTextBox.Enabled = true;
+            _displayNameTextBox.Enabled = true;
             _statusLabel.Text = "Status: Stopped.";
             _clientLabel.Text = "Viewer: No viewer connected.";
             _displayLabel.Text = "Display: " + GetDisplaySummary();

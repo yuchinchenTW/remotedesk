@@ -22,6 +22,7 @@ $refs = @(
 $shared = @(
     (Join-Path $PSScriptRoot "Shared\Protocol.cs")
     (Join-Path $PSScriptRoot "Shared\DpiAwareness.cs")
+    (Join-Path $PSScriptRoot "Shared\DiscoveryProtocol.cs")
 )
 
 $hostSources = @(
@@ -30,12 +31,14 @@ $hostSources = @(
     (Join-Path $PSScriptRoot "Host\RemoteHostServer.cs")
     (Join-Path $PSScriptRoot "Host\InputInjector.cs")
     (Join-Path $PSScriptRoot "Host\ScreenStreamer.cs")
+    (Join-Path $PSScriptRoot "Host\HostDiscoveryBroadcaster.cs")
 ) + $shared
 
 $viewerSources = @(
     (Join-Path $PSScriptRoot "Viewer\Program.cs")
     (Join-Path $PSScriptRoot "Viewer\ViewerForm.cs")
     (Join-Path $PSScriptRoot "Viewer\RemoteViewerClient.cs")
+    (Join-Path $PSScriptRoot "Viewer\HostDiscoveryListener.cs")
 ) + $shared
 
 $hostOut = "/out:" + (Join-Path $outDir "RemoteHost.exe")
