@@ -417,29 +417,43 @@ namespace SimpleRemote.Viewer
             }
         }
 
-        private void UpdateFrame(Bitmap frame, int width, int height)
+        private void UpdateFrame(FrameUpdate update)
         {
             if (IsDisposed)
             {
-                frame.Dispose();
+                update.Image.Dispose();
                 return;
             }
 
             if (InvokeRequired)
             {
-                BeginInvoke(new Action<Bitmap, int, int>(UpdateFrame), frame, width, height);
+                BeginInvoke(new Action<FrameUpdate>(UpdateFrame), update);
                 return;
             }
 
-            var previous = _currentFrame;
-            _currentFrame = frame;
-            _remoteSize = new Size(width, height);
-            _pictureBox.Image = _currentFrame;
+            _remoteSize = new Size(update.DesktopWidth, update.DesktopHeight);
 
-            if (previous != null)
+            if (update.IsFullFrame || _currentFrame == null || _currentFrame.Width != update.DesktopWidth || _currentFrame.Height != update.DesktopHeight)
             {
-                previous.Dispose();
+                var previous = _currentFrame;
+                _currentFrame = update.Image;
+                _pictureBox.Image = _currentFrame;
+
+                if (previous != null)
+                {
+                    previous.Dispose();
+                }
+
+                return;
             }
+
+            using (var graphics = Graphics.FromImage(_currentFrame))
+            {
+                graphics.DrawImageUnscaled(update.Image, update.X, update.Y);
+            }
+
+            update.Image.Dispose();
+            _pictureBox.Invalidate();
         }
 
         private void ResetConnection()

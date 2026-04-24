@@ -12,6 +12,12 @@ namespace SimpleRemote.Shared
         Input = 4
     }
 
+    public enum FrameKind : byte
+    {
+        Full = 1,
+        Patch = 2
+    }
+
     public enum InputCommandType : byte
     {
         MouseMove = 1,

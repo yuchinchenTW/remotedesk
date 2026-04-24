@@ -14,6 +14,7 @@ Windows LAN-only remote desktop MVP with two executables:
 - Protects access with a required password.
 - Reuses capture buffers, scales oversized desktops before encoding, and drops stale frames to keep latency lower.
 - On single-monitor hosts, it now prefers the Windows Desktop Duplication API for lower-latency capture and falls back to GDI if DXGI duplication is unavailable.
+- On the Desktop Duplication path, the host now prefers dirty-region patch updates instead of re-sending the whole desktop every frame.
 
 ## Limits
 

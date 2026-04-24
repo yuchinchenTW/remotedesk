@@ -14,7 +14,19 @@ namespace SimpleRemote.Host
 {
     internal interface IScreenCaptureBackend : IDisposable
     {
-        bool TryCaptureFrame(out int desktopWidth, out int desktopHeight, out byte[] jpegBytes);
+        bool TryCaptureFrame(out CapturedFrame frame);
+    }
+
+    internal sealed class CapturedFrame
+    {
+        public int DesktopWidth;
+        public int DesktopHeight;
+        public int X;
+        public int Y;
+        public int Width;
+        public int Height;
+        public bool IsFullFrame;
+        public byte[] JpegBytes;
     }
 
     internal static class ScreenStreamer
@@ -35,12 +47,10 @@ namespace SimpleRemote.Host
 
                         while (!token.IsCancellationRequested)
                         {
-                            int desktopWidth;
-                            int desktopHeight;
-                            byte[] jpeg;
-                            if (capturer.TryCaptureFrame(out desktopWidth, out desktopHeight, out jpeg))
+                            CapturedFrame frame;
+                            if (capturer.TryCaptureFrame(out frame))
                             {
-                                latestFrame.Update(desktopWidth, desktopHeight, jpeg);
+                                latestFrame.Update(frame);
                             }
 
                             if (token.WaitHandle.WaitOne(frameDelay))
@@ -63,7 +73,7 @@ namespace SimpleRemote.Host
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        FrameData frame;
+                        CapturedFrame frame;
                         if (!latestFrame.WaitAndTake(token, out frame))
                         {
                             break;
@@ -71,8 +81,16 @@ namespace SimpleRemote.Host
 
                         Protocol.SendMessage(stream, writeSync, MessageType.Frame, delegate(BinaryWriter writer)
                         {
+                            writer.Write((byte)(frame.IsFullFrame ? FrameKind.Full : FrameKind.Patch));
                             writer.Write(frame.DesktopWidth);
                             writer.Write(frame.DesktopHeight);
+                            if (!frame.IsFullFrame)
+                            {
+                                writer.Write(frame.X);
+                                writer.Write(frame.Y);
+                                writer.Write(frame.Width);
+                                writer.Write(frame.Height);
+                            }
                             writer.Write(frame.JpegBytes.Length);
                             writer.Write(frame.JpegBytes);
                         });
@@ -97,7 +115,7 @@ namespace SimpleRemote.Host
             {
                 try
                 {
-                    return new DesktopDuplicationCapture(1600, 38L);
+                    return new DesktopDuplicationCapture(38L);
                 }
                 catch
                 {
@@ -107,21 +125,14 @@ namespace SimpleRemote.Host
             return new GdiScreenCapture(1600, 38L);
         }
 
-        private sealed class FrameData
-        {
-            public int DesktopWidth;
-            public int DesktopHeight;
-            public byte[] JpegBytes;
-        }
-
         private sealed class LatestFrameStore : IDisposable
         {
             private readonly object _sync = new object();
             private readonly AutoResetEvent _available = new AutoResetEvent(false);
             private volatile bool _completed;
-            private FrameData _pending;
+            private CapturedFrame _pending;
 
-            public void Update(int desktopWidth, int desktopHeight, byte[] jpegBytes)
+            public void Update(CapturedFrame frame)
             {
                 if (_completed)
                 {
@@ -130,18 +141,13 @@ namespace SimpleRemote.Host
 
                 lock (_sync)
                 {
-                    _pending = new FrameData
-                    {
-                        DesktopWidth = desktopWidth,
-                        DesktopHeight = desktopHeight,
-                        JpegBytes = jpegBytes
-                    };
+                    _pending = frame;
                 }
 
                 _available.Set();
             }
 
-            public bool WaitAndTake(CancellationToken token, out FrameData frame)
+            public bool WaitAndTake(CancellationToken token, out CapturedFrame frame)
             {
                 frame = null;
 
@@ -187,7 +193,6 @@ namespace SimpleRemote.Host
 
         private sealed class GdiScreenCapture : IScreenCaptureBackend
         {
-            private readonly long _jpegQuality;
             private readonly int _maxDimension;
             private readonly EncoderParameters _encoderParameters;
 
@@ -201,19 +206,14 @@ namespace SimpleRemote.Host
             public GdiScreenCapture(int maxDimension, long jpegQuality)
             {
                 _maxDimension = maxDimension;
-                _jpegQuality = jpegQuality;
                 _encoderParameters = new EncoderParameters(1);
                 _encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
             }
 
-            public bool TryCaptureFrame(out int desktopWidth, out int desktopHeight, out byte[] jpegBytes)
+            public bool TryCaptureFrame(out CapturedFrame frame)
             {
                 var bounds = SystemInformation.VirtualScreen;
                 EnsureBuffers(bounds);
-
-                desktopWidth = bounds.Width;
-                desktopHeight = bounds.Height;
-
                 CaptureDesktop(bounds);
 
                 var imageToEncode = _scaledBitmap ?? _captureBitmap;
@@ -228,16 +228,23 @@ namespace SimpleRemote.Host
                     imageToEncode.Save(_jpegStream, ImageFormat.Jpeg);
                 }
 
-                jpegBytes = _jpegStream.ToArray();
+                frame = new CapturedFrame
+                {
+                    DesktopWidth = bounds.Width,
+                    DesktopHeight = bounds.Height,
+                    X = 0,
+                    Y = 0,
+                    Width = bounds.Width,
+                    Height = bounds.Height,
+                    IsFullFrame = true,
+                    JpegBytes = _jpegStream.ToArray()
+                };
                 return true;
             }
 
             public void Dispose()
             {
-                if (_encoderParameters != null)
-                {
-                    _encoderParameters.Dispose();
-                }
+                _encoderParameters.Dispose();
 
                 if (_scaledGraphics != null)
                 {

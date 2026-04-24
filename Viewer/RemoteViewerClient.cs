@@ -7,10 +7,20 @@ using SimpleRemote.Shared;
 
 namespace SimpleRemote.Viewer
 {
+    internal sealed class FrameUpdate
+    {
+        public Bitmap Image;
+        public int DesktopWidth;
+        public int DesktopHeight;
+        public int X;
+        public int Y;
+        public bool IsFullFrame;
+    }
+
     internal sealed class RemoteViewerClient : IDisposable
     {
         private readonly Action<string> _statusCallback;
-        private readonly Action<Bitmap, int, int> _frameCallback;
+        private readonly Action<FrameUpdate> _frameCallback;
         private readonly object _writeSync = new object();
         private readonly LatestFrameStore _latestFrame = new LatestFrameStore();
 
@@ -19,7 +29,7 @@ namespace SimpleRemote.Viewer
         private Thread _decodeThread;
         private volatile bool _running;
 
-        public RemoteViewerClient(Action<string> statusCallback, Action<Bitmap, int, int> frameCallback)
+        public RemoteViewerClient(Action<string> statusCallback, Action<FrameUpdate> frameCallback)
         {
             _statusCallback = statusCallback;
             _frameCallback = frameCallback;
@@ -208,11 +218,23 @@ namespace SimpleRemote.Viewer
 
                     using (var reader = Protocol.CreateReader(message.Payload))
                     {
+                        var frameKind = (FrameKind)reader.ReadByte();
                         var width = reader.ReadInt32();
                         var height = reader.ReadInt32();
+                        var x = 0;
+                        var y = 0;
+
+                        if (frameKind == FrameKind.Patch)
+                        {
+                            x = reader.ReadInt32();
+                            y = reader.ReadInt32();
+                            reader.ReadInt32();
+                            reader.ReadInt32();
+                        }
+
                         var imageLength = reader.ReadInt32();
                         var imageBytes = reader.ReadBytes(imageLength);
-                        _latestFrame.Update(width, height, imageBytes);
+                        _latestFrame.Update(width, height, x, y, frameKind == FrameKind.Full, imageBytes);
                     }
                 }
             }
@@ -244,7 +266,15 @@ namespace SimpleRemote.Viewer
                     using (var imageStream = new MemoryStream(frame.JpegBytes))
                     using (var image = Image.FromStream(imageStream))
                     {
-                        _frameCallback(new Bitmap(image), frame.DesktopWidth, frame.DesktopHeight);
+                        _frameCallback(new FrameUpdate
+                        {
+                            Image = new Bitmap(image),
+                            DesktopWidth = frame.DesktopWidth,
+                            DesktopHeight = frame.DesktopHeight,
+                            X = frame.X,
+                            Y = frame.Y,
+                            IsFullFrame = frame.IsFullFrame
+                        });
                     }
                 }
                 catch
@@ -257,6 +287,9 @@ namespace SimpleRemote.Viewer
         {
             public int DesktopWidth;
             public int DesktopHeight;
+            public int X;
+            public int Y;
+            public bool IsFullFrame;
             public byte[] JpegBytes;
         }
 
@@ -267,7 +300,7 @@ namespace SimpleRemote.Viewer
             private volatile bool _completed;
             private FrameData _pending;
 
-            public void Update(int desktopWidth, int desktopHeight, byte[] jpegBytes)
+            public void Update(int desktopWidth, int desktopHeight, int x, int y, bool isFullFrame, byte[] jpegBytes)
             {
                 if (_completed)
                 {
@@ -280,6 +313,9 @@ namespace SimpleRemote.Viewer
                     {
                         DesktopWidth = desktopWidth,
                         DesktopHeight = desktopHeight,
+                        X = x,
+                        Y = y,
+                        IsFullFrame = isFullFrame,
                         JpegBytes = jpegBytes
                     };
                 }

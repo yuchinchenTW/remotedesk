@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -25,14 +24,12 @@ namespace SimpleRemote.Host
             ? Array.Find(ImageCodecInfo.GetImageEncoders(), codec => codec.FormatID == ImageFormat.Jpeg.Guid)
             : null;
 
-        private readonly int _maxDimension;
         private readonly EncoderParameters _encoderParameters;
 
         private Rectangle _desktopBounds;
-        private Bitmap _frameBitmap;
-        private Bitmap _scaledBitmap;
-        private Graphics _scaledGraphics;
         private MemoryStream _jpegStream;
+        private bool _hasSentFullFrame;
+        private int _framesSinceFull;
 
         private IDXGIFactory1 _factory;
         private IDXGIAdapter1 _adapter;
@@ -45,20 +42,16 @@ namespace SimpleRemote.Host
         private VTableMap _map;
         private VTableUnmap _unmap;
 
-        public DesktopDuplicationCapture(int maxDimension, long jpegQuality)
+        public DesktopDuplicationCapture(long jpegQuality)
         {
-            _maxDimension = maxDimension;
             _encoderParameters = new EncoderParameters(1);
             _encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
-
             Initialize();
         }
 
-        public bool TryCaptureFrame(out int desktopWidth, out int desktopHeight, out byte[] jpegBytes)
+        public bool TryCaptureFrame(out CapturedFrame frame)
         {
-            desktopWidth = _desktopBounds.Width;
-            desktopHeight = _desktopBounds.Height;
-            jpegBytes = null;
+            frame = null;
 
             IDXGIResource desktopResource = null;
             IntPtr desktopTexturePtr = IntPtr.Zero;
@@ -95,37 +88,28 @@ namespace SimpleRemote.Host
 
                 _copyResource(_contextPtr, _stagingTexturePtr, desktopTexturePtr);
 
+                var updateRect = GetUpdateRect(frameInfo);
+                var sendFullFrame = !_hasSentFullFrame || !updateRect.HasValue || _framesSinceFull >= 120;
+                if (sendFullFrame)
+                {
+                    updateRect = new Rectangle(0, 0, _desktopBounds.Width, _desktopBounds.Height);
+                }
+
                 D3D11_MAPPED_SUBRESOURCE mapped;
                 hr = _map(_contextPtr, _stagingTexturePtr, 0, 1, 0, out mapped);
                 Marshal.ThrowExceptionForHR(hr);
 
                 try
                 {
-                    CopyMappedSurface(mapped);
+                    frame = EncodeFrame(mapped, updateRect.Value, sendFullFrame);
                 }
                 finally
                 {
                     _unmap(_contextPtr, _stagingTexturePtr, 0);
                 }
 
-                if (_scaledGraphics != null)
-                {
-                    _scaledGraphics.DrawImage(_frameBitmap, new Rectangle(Point.Empty, _scaledBitmap.Size));
-                }
-
-                var imageToEncode = _scaledBitmap ?? _frameBitmap;
-                _jpegStream.SetLength(0);
-
-                if (JpegCodec != null)
-                {
-                    imageToEncode.Save(_jpegStream, JpegCodec, _encoderParameters);
-                }
-                else
-                {
-                    imageToEncode.Save(_jpegStream, ImageFormat.Jpeg);
-                }
-
-                jpegBytes = _jpegStream.ToArray();
+                _hasSentFullFrame = true;
+                _framesSinceFull = sendFullFrame ? 0 : (_framesSinceFull + 1);
                 return true;
             }
             catch
@@ -161,11 +145,7 @@ namespace SimpleRemote.Host
         public void Dispose()
         {
             DisposeResources();
-
-            if (_encoderParameters != null)
-            {
-                _encoderParameters.Dispose();
-            }
+            _encoderParameters.Dispose();
         }
 
         private void Initialize()
@@ -178,6 +158,8 @@ namespace SimpleRemote.Host
             }
 
             _desktopBounds = Screen.PrimaryScreen.Bounds;
+            _hasSentFullFrame = false;
+            _framesSinceFull = 0;
 
             IntPtr factoryPtr;
             var factoryGuid = Factory1Guid;
@@ -209,7 +191,7 @@ namespace SimpleRemote.Host
             Marshal.ThrowExceptionForHR(hr);
 
             CreateStagingTexture();
-            CreateBitmaps();
+            _jpegStream = new MemoryStream(_desktopBounds.Width * _desktopBounds.Height / 3);
         }
 
         private void ResetDuplication()
@@ -243,68 +225,108 @@ namespace SimpleRemote.Host
             Marshal.ThrowExceptionForHR(hr);
         }
 
-        private void CreateBitmaps()
+        private Rectangle? GetUpdateRect(DXGI_OUTDUPL_FRAME_INFO frameInfo)
         {
-            if (_frameBitmap != null)
+            if (frameInfo.TotalMetadataBufferSize == 0)
             {
-                _frameBitmap.Dispose();
-                _frameBitmap = null;
+                return null;
             }
 
-            if (_scaledGraphics != null)
+            uint requiredSize;
+            var hr = _duplication.GetFrameDirtyRects(0, IntPtr.Zero, out requiredSize);
+            if (hr != S_OK || requiredSize == 0)
             {
-                _scaledGraphics.Dispose();
-                _scaledGraphics = null;
+                return null;
             }
 
-            if (_scaledBitmap != null)
-            {
-                _scaledBitmap.Dispose();
-                _scaledBitmap = null;
-            }
-
-            if (_jpegStream != null)
-            {
-                _jpegStream.Dispose();
-                _jpegStream = null;
-            }
-
-            _frameBitmap = new Bitmap(_desktopBounds.Width, _desktopBounds.Height, PixelFormat.Format32bppArgb);
-
-            var scale = Math.Min(1.0, Math.Min((double)_maxDimension / _desktopBounds.Width, (double)_maxDimension / _desktopBounds.Height));
-            if (scale < 0.999)
-            {
-                var scaledWidth = Math.Max(1, (int)Math.Round(_desktopBounds.Width * scale));
-                var scaledHeight = Math.Max(1, (int)Math.Round(_desktopBounds.Height * scale));
-                _scaledBitmap = new Bitmap(scaledWidth, scaledHeight, PixelFormat.Format24bppRgb);
-                _scaledGraphics = Graphics.FromImage(_scaledBitmap);
-                _scaledGraphics.CompositingMode = CompositingMode.SourceCopy;
-                _scaledGraphics.CompositingQuality = CompositingQuality.HighSpeed;
-                _scaledGraphics.InterpolationMode = InterpolationMode.Low;
-                _scaledGraphics.PixelOffsetMode = PixelOffsetMode.HighSpeed;
-                _scaledGraphics.SmoothingMode = SmoothingMode.None;
-            }
-
-            _jpegStream = new MemoryStream(_desktopBounds.Width * _desktopBounds.Height / 4);
-        }
-
-        private void CopyMappedSurface(D3D11_MAPPED_SUBRESOURCE mapped)
-        {
-            var rect = new Rectangle(0, 0, _frameBitmap.Width, _frameBitmap.Height);
-            var bitmapData = _frameBitmap.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            var buffer = Marshal.AllocHGlobal((int)requiredSize);
 
             try
             {
-                for (var y = 0; y < _frameBitmap.Height; y++)
+                hr = _duplication.GetFrameDirtyRects(requiredSize, buffer, out requiredSize);
+                if (hr != S_OK)
                 {
-                    var srcRow = new IntPtr(mapped.Data.ToInt64() + (long)(mapped.RowPitch * y));
-                    var dstRow = new IntPtr(bitmapData.Scan0.ToInt64() + (long)(bitmapData.Stride * y));
-                    CopyMemory(dstRow, srcRow, (uint)(Math.Min(bitmapData.Stride, _frameBitmap.Width * 4)));
+                    return null;
                 }
+
+                var rectSize = Marshal.SizeOf(typeof(RECT));
+                var rectCount = (int)requiredSize / rectSize;
+                Rectangle unionRect = Rectangle.Empty;
+
+                for (var i = 0; i < rectCount; i++)
+                {
+                    var rectPtr = new IntPtr(buffer.ToInt64() + (long)(i * rectSize));
+                    var dirtyRect = ((RECT)Marshal.PtrToStructure(rectPtr, typeof(RECT))).ToRectangle();
+                    if (dirtyRect.Width <= 0 || dirtyRect.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    unionRect = unionRect.IsEmpty ? dirtyRect : Rectangle.Union(unionRect, dirtyRect);
+                }
+
+                if (unionRect.IsEmpty)
+                {
+                    return null;
+                }
+
+                var fullPixels = _desktopBounds.Width * _desktopBounds.Height;
+                var dirtyPixels = unionRect.Width * unionRect.Height;
+                if (dirtyPixels >= fullPixels / 2)
+                {
+                    return new Rectangle(0, 0, _desktopBounds.Width, _desktopBounds.Height);
+                }
+
+                return unionRect;
             }
             finally
             {
-                _frameBitmap.UnlockBits(bitmapData);
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        private CapturedFrame EncodeFrame(D3D11_MAPPED_SUBRESOURCE mapped, Rectangle region, bool isFullFrame)
+        {
+            using (var patchBitmap = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppArgb))
+            {
+                var bitmapData = patchBitmap.LockBits(new Rectangle(0, 0, region.Width, region.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+                try
+                {
+                    for (var y = 0; y < region.Height; y++)
+                    {
+                        var srcOffset = ((region.Y + y) * (long)mapped.RowPitch) + (region.X * 4L);
+                        var srcRow = new IntPtr(mapped.Data.ToInt64() + srcOffset);
+                        var dstRow = new IntPtr(bitmapData.Scan0.ToInt64() + (long)(bitmapData.Stride * y));
+                        CopyMemory(dstRow, srcRow, (uint)(region.Width * 4));
+                    }
+                }
+                finally
+                {
+                    patchBitmap.UnlockBits(bitmapData);
+                }
+
+                _jpegStream.SetLength(0);
+                if (JpegCodec != null)
+                {
+                    patchBitmap.Save(_jpegStream, JpegCodec, _encoderParameters);
+                }
+                else
+                {
+                    patchBitmap.Save(_jpegStream, ImageFormat.Jpeg);
+                }
+
+                return new CapturedFrame
+                {
+                    DesktopWidth = _desktopBounds.Width,
+                    DesktopHeight = _desktopBounds.Height,
+                    X = region.X,
+                    Y = region.Y,
+                    Width = region.Width,
+                    Height = region.Height,
+                    IsFullFrame = isFullFrame,
+                    JpegBytes = _jpegStream.ToArray()
+                };
             }
         }
 
@@ -372,24 +394,6 @@ namespace SimpleRemote.Host
 
         private void DisposeResources()
         {
-            if (_scaledGraphics != null)
-            {
-                _scaledGraphics.Dispose();
-                _scaledGraphics = null;
-            }
-
-            if (_scaledBitmap != null)
-            {
-                _scaledBitmap.Dispose();
-                _scaledBitmap = null;
-            }
-
-            if (_frameBitmap != null)
-            {
-                _frameBitmap.Dispose();
-                _frameBitmap = null;
-            }
-
             if (_jpegStream != null)
             {
                 _jpegStream.Dispose();
