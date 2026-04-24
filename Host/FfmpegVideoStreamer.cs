@@ -12,7 +12,7 @@ namespace SimpleRemote.Host
     internal sealed class FfmpegVideoStreamer : IDisposable
     {
         private const int ChunkSize = 64 * 1024;
-        private const int MaxDimension = 1600;
+        private const int MaxDimension = 2560;
 
         private readonly string _ffmpegPath;
         private readonly int _fps;

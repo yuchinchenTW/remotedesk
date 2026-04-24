@@ -214,7 +214,8 @@ namespace SimpleRemote.Viewer
             {
                 BackColor = Color.Black,
                 SizeMode = PictureBoxSizeMode.StretchImage,
-                TabStop = true
+                TabStop = true,
+                Location = Point.Empty
             };
             _pictureBox.MouseDown += PictureBox_MouseDown;
             _pictureBox.MouseUp += PictureBox_MouseUp;
@@ -668,8 +669,10 @@ namespace SimpleRemote.Viewer
 
         private void ApplyZoom(double zoomFactor)
         {
+            var previousCenter = GetViewportCenterRatio();
             _zoomFactor = Math.Max(MinZoom, Math.Min(MaxZoom, zoomFactor));
             UpdateImageLayout();
+            RestoreViewportCenter(previousCenter);
         }
 
         private void UpdateImageLayout()
@@ -677,6 +680,9 @@ namespace SimpleRemote.Viewer
             if (_currentFrame == null || _remoteSize.Width <= 0 || _remoteSize.Height <= 0)
             {
                 _zoomLabel.Text = "Zoom: Fit";
+                _imagePanel.AutoScrollMinSize = Size.Empty;
+                _pictureBox.Size = Size.Empty;
+                _pictureBox.Location = Point.Empty;
                 return;
             }
 
@@ -690,10 +696,41 @@ namespace SimpleRemote.Viewer
             var displayHeight = Math.Max(1, (int)Math.Round(_remoteSize.Height * displayScale));
 
             _pictureBox.Size = new Size(displayWidth, displayHeight);
+            _imagePanel.AutoScrollMinSize = new Size(displayWidth, displayHeight);
             _pictureBox.Location = new Point(
-                Math.Max(0, (viewportWidth - displayWidth) / 2),
-                Math.Max(0, (viewportHeight - displayHeight) / 2));
+                displayWidth >= viewportWidth ? 0 : Math.Max(0, (viewportWidth - displayWidth) / 2),
+                displayHeight >= viewportHeight ? 0 : Math.Max(0, (viewportHeight - displayHeight) / 2));
             _zoomLabel.Text = "Zoom: " + (int)Math.Round(_zoomFactor * 100) + "%";
+        }
+
+        private PointF GetViewportCenterRatio()
+        {
+            if (_pictureBox.Width <= 0 || _pictureBox.Height <= 0)
+            {
+                return new PointF(0.5f, 0.5f);
+            }
+
+            var scrollX = Math.Max(0, -_imagePanel.AutoScrollPosition.X);
+            var scrollY = Math.Max(0, -_imagePanel.AutoScrollPosition.Y);
+            var centerX = scrollX + (_imagePanel.ClientSize.Width / 2.0);
+            var centerY = scrollY + (_imagePanel.ClientSize.Height / 2.0);
+
+            return new PointF(
+                (float)Math.Max(0.0, Math.Min(1.0, centerX / Math.Max(1, _pictureBox.Width))),
+                (float)Math.Max(0.0, Math.Min(1.0, centerY / Math.Max(1, _pictureBox.Height))));
+        }
+
+        private void RestoreViewportCenter(PointF centerRatio)
+        {
+            if (_pictureBox.Width <= _imagePanel.ClientSize.Width && _pictureBox.Height <= _imagePanel.ClientSize.Height)
+            {
+                _imagePanel.AutoScrollPosition = Point.Empty;
+                return;
+            }
+
+            var targetX = Math.Max(0, (int)Math.Round((_pictureBox.Width * centerRatio.X) - (_imagePanel.ClientSize.Width / 2.0)));
+            var targetY = Math.Max(0, (int)Math.Round((_pictureBox.Height * centerRatio.Y) - (_imagePanel.ClientSize.Height / 2.0)));
+            _imagePanel.AutoScrollPosition = new Point(targetX, targetY);
         }
 
         private static MouseButtonCode TranslateButton(MouseButtons button)
