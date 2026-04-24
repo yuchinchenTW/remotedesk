@@ -528,16 +528,21 @@ namespace SimpleRemote.Viewer
                 return;
             }
 
+            var remoteSizeChanged = _remoteSize.Width != update.DesktopWidth || _remoteSize.Height != update.DesktopHeight;
             _remoteSize = new Size(update.DesktopWidth, update.DesktopHeight);
-            var previousScroll = GetScrollOffset();
 
             if (update.IsFullFrame || _currentFrame == null || _currentFrame.Width != update.DesktopWidth || _currentFrame.Height != update.DesktopHeight)
             {
                 var previous = _currentFrame;
                 _currentFrame = update.Image;
                 _pictureBox.Image = _currentFrame;
-                UpdateImageLayout();
-                RestoreScrollOffset(previousScroll);
+
+                if (previous == null || remoteSizeChanged)
+                {
+                    var previousScroll = GetScrollOffset();
+                    UpdateImageLayout();
+                    RestoreScrollOffset(previousScroll);
+                }
 
                 if (previous != null)
                 {
@@ -554,8 +559,6 @@ namespace SimpleRemote.Viewer
 
             update.Image.Dispose();
             _pictureBox.Invalidate();
-            UpdateImageLayout();
-            RestoreScrollOffset(previousScroll);
         }
 
         private void ResetConnection()
