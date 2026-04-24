@@ -192,6 +192,15 @@ namespace SimpleRemote.Viewer
             });
         }
 
+        public void SendDisplaySelection(int selection)
+        {
+            SendInput(delegate(BinaryWriter writer)
+            {
+                writer.Write((byte)InputCommandType.SetDisplaySelection);
+                writer.Write(selection);
+            });
+        }
+
         private void SendInput(Action<BinaryWriter> writePayload)
         {
             if (!IsConnected)

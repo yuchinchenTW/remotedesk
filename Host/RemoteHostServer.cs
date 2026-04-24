@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -12,6 +13,7 @@ namespace SimpleRemote.Host
     {
         private readonly Action<string> _statusCallback;
         private readonly Action<string> _clientCallback;
+        private readonly DisplaySelectionState _displaySelection = new DisplaySelectionState();
 
         private TcpListener _listener;
         private Thread _acceptThread;
@@ -229,7 +231,7 @@ namespace SimpleRemote.Host
                         _statusCallback(Screen.AllScreens.Length == 1
                             ? "ffmpeg unavailable, falling back to JPEG streaming."
                             : "Multi-monitor host detected, falling back to JPEG streaming.");
-                        ScreenStreamer.StreamVirtualDesktop(stream, writeSync, _sessionTokenSource.Token, 20);
+                        ScreenStreamer.StreamVirtualDesktop(stream, writeSync, _sessionTokenSource.Token, 20, _displaySelection.GetCaptureBounds);
                     }
                     catch (Exception ex)
                     {
@@ -270,21 +272,21 @@ namespace SimpleRemote.Host
                     switch (command)
                     {
                         case InputCommandType.MouseMove:
-                            InputInjector.MouseMove(reader.ReadInt32(), reader.ReadInt32());
+                            MoveMouseRelativeToSelection(reader.ReadInt32(), reader.ReadInt32());
                             break;
 
                         case InputCommandType.MouseDown:
-                            InputInjector.MouseMove(reader.ReadInt32(), reader.ReadInt32());
+                            MoveMouseRelativeToSelection(reader.ReadInt32(), reader.ReadInt32());
                             InputInjector.MouseButton((MouseButtonCode)reader.ReadByte(), true);
                             break;
 
                         case InputCommandType.MouseUp:
-                            InputInjector.MouseMove(reader.ReadInt32(), reader.ReadInt32());
+                            MoveMouseRelativeToSelection(reader.ReadInt32(), reader.ReadInt32());
                             InputInjector.MouseButton((MouseButtonCode)reader.ReadByte(), false);
                             break;
 
                         case InputCommandType.MouseWheel:
-                            InputInjector.MouseMove(reader.ReadInt32(), reader.ReadInt32());
+                            MoveMouseRelativeToSelection(reader.ReadInt32(), reader.ReadInt32());
                             InputInjector.MouseWheel(reader.ReadInt32());
                             break;
 
@@ -299,9 +301,70 @@ namespace SimpleRemote.Host
                         case InputCommandType.PasteText:
                             InputInjector.PasteText(reader.ReadString());
                             break;
+
+                        case InputCommandType.SetDisplaySelection:
+                            var selection = reader.ReadInt32();
+                            _displaySelection.SetSelection(selection);
+                            _statusCallback("Display selection changed to " + _displaySelection.GetLabel() + ".");
+                            break;
                     }
                 }
             }
+        }
+
+        private void MoveMouseRelativeToSelection(int x, int y)
+        {
+            var virtualPoint = _displaySelection.TranslateToVirtualDesktopCoordinates(x, y);
+            InputInjector.MouseMove(virtualPoint.X, virtualPoint.Y);
+        }
+    }
+
+    internal sealed class DisplaySelectionState
+    {
+        private int _selectedScreenIndex = -1;
+
+        public Rectangle GetCaptureBounds()
+        {
+            var selection = GetEffectiveSelection();
+            if (selection < 0)
+            {
+                return SystemInformation.VirtualScreen;
+            }
+
+            var screens = Screen.AllScreens;
+            return screens[selection].Bounds;
+        }
+
+        public Point TranslateToVirtualDesktopCoordinates(int x, int y)
+        {
+            var virtualBounds = SystemInformation.VirtualScreen;
+            var captureBounds = GetCaptureBounds();
+            return new Point(
+                x + captureBounds.Left - virtualBounds.Left,
+                y + captureBounds.Top - virtualBounds.Top);
+        }
+
+        public void SetSelection(int selection)
+        {
+            _selectedScreenIndex = selection;
+        }
+
+        public string GetLabel()
+        {
+            var selection = GetEffectiveSelection();
+            return selection < 0 ? "All screens" : "Screen " + (selection + 1);
+        }
+
+        private int GetEffectiveSelection()
+        {
+            var selection = _selectedScreenIndex;
+            var screens = Screen.AllScreens;
+            if (selection < 0 || selection >= screens.Length)
+            {
+                return -1;
+            }
+
+            return selection;
         }
     }
 }

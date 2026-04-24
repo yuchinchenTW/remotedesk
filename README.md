@@ -11,6 +11,7 @@ Windows LAN-only remote desktop MVP with two executables:
 - Forwards mouse move, click, wheel, and basic keyboard key down/up events.
 - `Ctrl+V` in the viewer sends local clipboard text to the remote PC and triggers paste there.
 - The viewer supports zoom in/out buttons, `Ctrl+MouseWheel` for display scaling, preserves scrollbar position while frames keep updating, and lets you pan around a zoomed image.
+- On dual-monitor hosts using the JPEG path, the viewer can switch between `All`, `Screen 1`, and `Screen 2`.
 - Hosts broadcast their presence over UDP on the local LAN, and viewers list discovered hosts automatically.
 - Protects access with a required password.
 - Reuses capture buffers, scales oversized desktops before encoding, and drops stale frames to keep latency lower.

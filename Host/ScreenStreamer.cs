@@ -33,10 +33,10 @@ namespace SimpleRemote.Host
     {
         private static readonly ImageCodecInfo JpegCodec = ImageCodecInfo.GetImageEncoders().FirstOrDefault(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
 
-        public static void StreamVirtualDesktop(NetworkStream stream, object writeSync, CancellationToken token, int fps)
+        public static void StreamVirtualDesktop(NetworkStream stream, object writeSync, CancellationToken token, int fps, Func<Rectangle> captureBoundsProvider)
         {
             using (var latestFrame = new LatestFrameStore())
-            using (var capturer = CreateCaptureBackend())
+            using (var capturer = CreateCaptureBackend(captureBoundsProvider))
             {
                 Exception captureError = null;
                 var captureThread = new Thread(delegate()
@@ -109,7 +109,7 @@ namespace SimpleRemote.Host
             }
         }
 
-        private static IScreenCaptureBackend CreateCaptureBackend()
+        private static IScreenCaptureBackend CreateCaptureBackend(Func<Rectangle> captureBoundsProvider)
         {
             if (Screen.AllScreens.Length == 1)
             {
@@ -122,7 +122,7 @@ namespace SimpleRemote.Host
                 }
             }
 
-            return new GdiScreenCapture(1600, 38L);
+            return new GdiScreenCapture(1600, 38L, captureBoundsProvider);
         }
 
         private sealed class LatestFrameStore : IDisposable
@@ -195,6 +195,7 @@ namespace SimpleRemote.Host
         {
             private readonly int _maxDimension;
             private readonly EncoderParameters _encoderParameters;
+            private readonly Func<Rectangle> _captureBoundsProvider;
 
             private Rectangle _sourceBounds;
             private Bitmap _captureBitmap;
@@ -203,16 +204,21 @@ namespace SimpleRemote.Host
             private Graphics _scaledGraphics;
             private MemoryStream _jpegStream;
 
-            public GdiScreenCapture(int maxDimension, long jpegQuality)
+            public GdiScreenCapture(int maxDimension, long jpegQuality, Func<Rectangle> captureBoundsProvider)
             {
                 _maxDimension = maxDimension;
+                _captureBoundsProvider = captureBoundsProvider;
                 _encoderParameters = new EncoderParameters(1);
                 _encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
             }
 
             public bool TryCaptureFrame(out CapturedFrame frame)
             {
-                var bounds = SystemInformation.VirtualScreen;
+                var bounds = _captureBoundsProvider != null ? _captureBoundsProvider() : SystemInformation.VirtualScreen;
+                if (bounds.Width <= 0 || bounds.Height <= 0)
+                {
+                    bounds = SystemInformation.VirtualScreen;
+                }
                 EnsureBuffers(bounds);
                 CaptureDesktop(bounds);
 

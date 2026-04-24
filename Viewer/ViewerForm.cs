@@ -19,6 +19,7 @@ namespace SimpleRemote.Viewer
         private readonly TextBox _passwordTextBox;
         private readonly Button _connectButton;
         private readonly Button _disconnectButton;
+        private readonly ComboBox _displayComboBox;
         private readonly Button _zoomOutButton;
         private readonly Button _zoomResetButton;
         private readonly Button _zoomInButton;
@@ -119,9 +120,28 @@ namespace SimpleRemote.Viewer
             };
             _disconnectButton.Click += DisconnectButton_Click;
 
-            _zoomOutButton = new Button
+            var displayLabel = new Label
             {
                 Left = 850,
+                Top = 14,
+                Width = 50,
+                Text = "Display"
+            };
+
+            _displayComboBox = new ComboBox
+            {
+                Left = 904,
+                Top = 10,
+                Width = 110,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            _displayComboBox.Items.AddRange(new object[] { "All", "Screen 1", "Screen 2" });
+            _displayComboBox.SelectedIndex = 0;
+            _displayComboBox.SelectedIndexChanged += DisplayComboBox_SelectedIndexChanged;
+
+            _zoomOutButton = new Button
+            {
+                Left = 1028,
                 Top = 8,
                 Width = 34,
                 Text = "-"
@@ -130,7 +150,7 @@ namespace SimpleRemote.Viewer
 
             _zoomResetButton = new Button
             {
-                Left = 888,
+                Left = 1066,
                 Top = 8,
                 Width = 58,
                 Text = "100%"
@@ -139,7 +159,7 @@ namespace SimpleRemote.Viewer
 
             _zoomInButton = new Button
             {
-                Left = 950,
+                Left = 1128,
                 Top = 8,
                 Width = 34,
                 Text = "+"
@@ -148,7 +168,7 @@ namespace SimpleRemote.Viewer
 
             _zoomLabel = new Label
             {
-                Left = 992,
+                Left = 1170,
                 Top = 14,
                 Width = 100,
                 Text = "Zoom: Fit"
@@ -180,6 +200,8 @@ namespace SimpleRemote.Viewer
             topPanel.Controls.Add(_passwordTextBox);
             topPanel.Controls.Add(_connectButton);
             topPanel.Controls.Add(_disconnectButton);
+            topPanel.Controls.Add(displayLabel);
+            topPanel.Controls.Add(_displayComboBox);
             topPanel.Controls.Add(_zoomOutButton);
             topPanel.Controls.Add(_zoomResetButton);
             topPanel.Controls.Add(_zoomInButton);
@@ -310,6 +332,7 @@ namespace SimpleRemote.Viewer
                 _hostTextBox.Enabled = false;
                 _portTextBox.Enabled = false;
                 _passwordTextBox.Enabled = false;
+                SendCurrentDisplaySelection();
                 _pictureBox.Focus();
             }
             catch (Exception ex)
@@ -328,6 +351,11 @@ namespace SimpleRemote.Viewer
         private void DisconnectButton_Click(object sender, EventArgs e)
         {
             ResetConnection();
+        }
+
+        private void DisplayComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            SendCurrentDisplaySelection();
         }
 
         private void HostsListView_SelectedIndexChanged(object sender, EventArgs e)
@@ -600,6 +628,27 @@ namespace SimpleRemote.Viewer
             _hostTextBox.Enabled = true;
             _portTextBox.Enabled = true;
             _passwordTextBox.Enabled = true;
+        }
+
+        private void SendCurrentDisplaySelection()
+        {
+            if (_client == null || !_client.IsConnected)
+            {
+                return;
+            }
+
+            var selection = -1;
+            if (_displayComboBox.SelectedIndex == 1)
+            {
+                selection = 0;
+            }
+            else if (_displayComboBox.SelectedIndex == 2)
+            {
+                selection = 1;
+            }
+
+            _client.SendDisplaySelection(selection);
+            UpdateStatus("Requested " + _displayComboBox.Text + ".");
         }
 
         private void RefreshDiscoveredHosts()
