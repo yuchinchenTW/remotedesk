@@ -250,9 +250,16 @@ namespace SimpleRemote.Viewer
 
             _imagePanel.Controls.Add(_pictureBox);
 
+            var contentPanel = new Panel
+            {
+                Dock = DockStyle.Fill
+            };
+
+            contentPanel.Controls.Add(_imagePanel);
+            contentPanel.Controls.Add(_hostsListView);
+
+            Controls.Add(contentPanel);
             Controls.Add(topPanel);
-            Controls.Add(_imagePanel);
-            Controls.Add(_hostsListView);
 
             KeyDown += ViewerForm_KeyDown;
             KeyUp += ViewerForm_KeyUp;
