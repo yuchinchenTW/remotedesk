@@ -12,7 +12,7 @@ namespace SimpleRemote.Host
     internal sealed class FfmpegVideoStreamer : IDisposable
     {
         private const int ChunkSize = 64 * 1024;
-        private const int MaxDimension = 2560;
+        private const int MaxDimension = 3840;
 
         private readonly string _ffmpegPath;
         private readonly int _fps;
@@ -145,8 +145,8 @@ namespace SimpleRemote.Host
             var primaryScreen = Screen.PrimaryScreen.Bounds;
             var scaledSize = ScaleToFit(primaryScreen.Width, primaryScreen.Height, MaxDimension);
             var filter = scaledSize.Width == primaryScreen.Width && scaledSize.Height == primaryScreen.Height
-                ? "hwdownload,format=bgra,format=yuv420p"
-                : "hwdownload,format=bgra,scale=" + scaledSize.Width + ":" + scaledSize.Height + ":flags=fast_bilinear,format=yuv420p";
+                ? "hwdownload,format=bgra,format=bgr0"
+                : "hwdownload,format=bgra,scale=" + scaledSize.Width + ":" + scaledSize.Height + ":flags=lanczos,format=bgr0";
 
             return string.Join(" ", new[]
             {
@@ -157,11 +157,9 @@ namespace SimpleRemote.Host
                 "-an",
                 "-sn",
                 "-vf", Quote(filter),
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-tune", "zerolatency",
-                "-pix_fmt", "yuv420p",
-                "-crf", "28",
+                "-c:v", "libx264rgb",
+                "-preset", "veryfast",
+                "-crf", "18",
                 "-g", Math.Max(10, _fps).ToString(),
                 "-keyint_min", Math.Max(10, _fps).ToString(),
                 "-sc_threshold", "0",

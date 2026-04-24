@@ -529,6 +529,7 @@ namespace SimpleRemote.Viewer
             }
 
             _remoteSize = new Size(update.DesktopWidth, update.DesktopHeight);
+            var previousScroll = GetScrollOffset();
 
             if (update.IsFullFrame || _currentFrame == null || _currentFrame.Width != update.DesktopWidth || _currentFrame.Height != update.DesktopHeight)
             {
@@ -536,6 +537,7 @@ namespace SimpleRemote.Viewer
                 _currentFrame = update.Image;
                 _pictureBox.Image = _currentFrame;
                 UpdateImageLayout();
+                RestoreScrollOffset(previousScroll);
 
                 if (previous != null)
                 {
@@ -553,6 +555,7 @@ namespace SimpleRemote.Viewer
             update.Image.Dispose();
             _pictureBox.Invalidate();
             UpdateImageLayout();
+            RestoreScrollOffset(previousScroll);
         }
 
         private void ResetConnection()
@@ -731,6 +734,22 @@ namespace SimpleRemote.Viewer
             var targetX = Math.Max(0, (int)Math.Round((_pictureBox.Width * centerRatio.X) - (_imagePanel.ClientSize.Width / 2.0)));
             var targetY = Math.Max(0, (int)Math.Round((_pictureBox.Height * centerRatio.Y) - (_imagePanel.ClientSize.Height / 2.0)));
             _imagePanel.AutoScrollPosition = new Point(targetX, targetY);
+        }
+
+        private Point GetScrollOffset()
+        {
+            return new Point(
+                Math.Max(0, -_imagePanel.AutoScrollPosition.X),
+                Math.Max(0, -_imagePanel.AutoScrollPosition.Y));
+        }
+
+        private void RestoreScrollOffset(Point scrollOffset)
+        {
+            var maxX = Math.Max(0, _pictureBox.Width - _imagePanel.ClientSize.Width);
+            var maxY = Math.Max(0, _pictureBox.Height - _imagePanel.ClientSize.Height);
+            _imagePanel.AutoScrollPosition = new Point(
+                Math.Max(0, Math.Min(maxX, scrollOffset.X)),
+                Math.Max(0, Math.Min(maxY, scrollOffset.Y)));
         }
 
         private static MouseButtonCode TranslateButton(MouseButtons button)
