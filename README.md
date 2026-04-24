@@ -15,12 +15,14 @@ Windows LAN-only remote desktop MVP with two executables:
 - Reuses capture buffers, scales oversized desktops before encoding, and drops stale frames to keep latency lower.
 - On single-monitor hosts, it now prefers the Windows Desktop Duplication API for lower-latency capture and falls back to GDI if DXGI duplication is unavailable.
 - On the Desktop Duplication path, the host now prefers dirty-region patch updates instead of re-sending the whole desktop every frame.
+- On single-monitor hosts with `ffmpeg.exe` next to the app, it now prefers an H.264 stream over MPEG-TS for lower bandwidth and smoother playback.
 
 ## Limits
 
 - One viewer at a time.
 - Auto-discovery is LAN-only and uses UDP broadcast, so it does not replace ZeroTier or internet-wide discovery.
 - Multi-monitor hosts currently keep using the older GDI capture path.
+- The `ffmpeg` H.264 path currently targets single-monitor hosts. Multi-monitor hosts still fall back to the older JPEG path.
 - No NAT traversal, relay, audio, clipboard, file transfer, or UAC bypass.
 - For elevated windows, run `RemoteHost.exe` as administrator.
 
@@ -33,6 +35,7 @@ This repo builds with the built-in .NET Framework compiler already present on Wi
 ```
 
 The output goes to `dist\`.
+`build.ps1` also copies `ffmpeg.exe` into `dist\` when the bundled tool is present.
 
 ## Usage
 

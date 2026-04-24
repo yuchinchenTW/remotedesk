@@ -23,6 +23,7 @@ $shared = @(
     (Join-Path $PSScriptRoot "Shared\Protocol.cs")
     (Join-Path $PSScriptRoot "Shared\DpiAwareness.cs")
     (Join-Path $PSScriptRoot "Shared\DiscoveryProtocol.cs")
+    (Join-Path $PSScriptRoot "Shared\FfmpegLocator.cs")
 )
 
 $hostSources = @(
@@ -33,6 +34,7 @@ $hostSources = @(
     (Join-Path $PSScriptRoot "Host\ScreenStreamer.cs")
     (Join-Path $PSScriptRoot "Host\DesktopDuplicationCapture.cs")
     (Join-Path $PSScriptRoot "Host\HostDiscoveryBroadcaster.cs")
+    (Join-Path $PSScriptRoot "Host\FfmpegVideoStreamer.cs")
 ) + $shared
 
 $viewerSources = @(
@@ -40,6 +42,7 @@ $viewerSources = @(
     (Join-Path $PSScriptRoot "Viewer\ViewerForm.cs")
     (Join-Path $PSScriptRoot "Viewer\RemoteViewerClient.cs")
     (Join-Path $PSScriptRoot "Viewer\HostDiscoveryListener.cs")
+    (Join-Path $PSScriptRoot "Viewer\FfmpegVideoDecoder.cs")
 ) + $shared
 
 $hostOut = "/out:" + (Join-Path $outDir "RemoteHost.exe")
@@ -53,6 +56,16 @@ if ($LASTEXITCODE -ne 0) {
 & $compiler /nologo /target:winexe $viewerOut $refs $viewerSources
 if ($LASTEXITCODE -ne 0) {
     throw "Viewer build failed."
+}
+
+$ffmpegSource = Join-Path $PSScriptRoot "tools\ffmpeg\ffmpeg-8.1-essentials_build\bin\ffmpeg.exe"
+if (Test-Path $ffmpegSource) {
+    Copy-Item -Path $ffmpegSource -Destination (Join-Path $outDir "ffmpeg.exe") -Force
+}
+
+$ffmpegLicense = Join-Path $PSScriptRoot "tools\ffmpeg\ffmpeg-8.1-essentials_build\LICENSE"
+if (Test-Path $ffmpegLicense) {
+    Copy-Item -Path $ffmpegLicense -Destination (Join-Path $outDir "FFMPEG-LICENSE.txt") -Force
 }
 
 Write-Output "Built:"

@@ -9,7 +9,8 @@ namespace SimpleRemote.Shared
         AuthRequest = 1,
         AuthResponse = 2,
         Frame = 3,
-        Input = 4
+        Input = 4,
+        VideoChunk = 5
     }
 
     public enum FrameKind : byte

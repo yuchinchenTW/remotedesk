@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Windows.Forms;
 using SimpleRemote.Shared;
 
 namespace SimpleRemote.Host
@@ -209,10 +210,24 @@ namespace SimpleRemote.Host
                 {
                     try
                     {
+                        using (var ffmpegStreamer = FfmpegVideoStreamer.TryCreate(30))
+                        {
+                            if (ffmpegStreamer != null)
+                            {
+                                _statusCallback("Streaming H.264 video over ffmpeg.");
+                                ffmpegStreamer.Stream(stream, writeSync, _sessionTokenSource.Token);
+                                return;
+                            }
+                        }
+
+                        _statusCallback(Screen.AllScreens.Length == 1
+                            ? "ffmpeg unavailable, falling back to JPEG streaming."
+                            : "Multi-monitor host detected, falling back to JPEG streaming.");
                         ScreenStreamer.StreamVirtualDesktop(stream, writeSync, _sessionTokenSource.Token, 20);
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        _statusCallback("Video stream stopped: " + ex.Message);
                     }
                 });
 

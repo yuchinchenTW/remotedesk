@@ -24,6 +24,7 @@ namespace SimpleRemote.Viewer
         private readonly object _writeSync = new object();
         private readonly LatestFrameStore _latestFrame = new LatestFrameStore();
 
+        private FfmpegVideoDecoder _videoDecoder;
         private TcpClient _client;
         private Thread _receiveThread;
         private Thread _decodeThread;
@@ -108,6 +109,12 @@ namespace SimpleRemote.Viewer
                 }
 
                 _client = null;
+            }
+
+            if (_videoDecoder != null)
+            {
+                _videoDecoder.Dispose();
+                _videoDecoder = null;
             }
 
             if (_receiveThread != null && _receiveThread != Thread.CurrentThread)
@@ -211,6 +218,14 @@ namespace SimpleRemote.Viewer
                 while (_running)
                 {
                     var message = Protocol.ReceiveMessage(stream);
+
+                    if (message.Type == MessageType.VideoChunk)
+                    {
+                        EnsureVideoDecoder();
+                        _videoDecoder.WriteChunk(message.Payload);
+                        continue;
+                    }
+
                     if (message.Type != MessageType.Frame)
                     {
                         continue;
@@ -251,6 +266,17 @@ namespace SimpleRemote.Viewer
             }
         }
 
+        private void EnsureVideoDecoder()
+        {
+            if (_videoDecoder != null)
+            {
+                return;
+            }
+
+            _videoDecoder = new FfmpegVideoDecoder(OnVideoFrameDecoded, _statusCallback);
+            _statusCallback("Receiving H.264 stream.");
+        }
+
         private void DecodeLoop()
         {
             while (_running)
@@ -281,6 +307,19 @@ namespace SimpleRemote.Viewer
                 {
                 }
             }
+        }
+
+        private void OnVideoFrameDecoded(Bitmap frame)
+        {
+            _frameCallback(new FrameUpdate
+            {
+                Image = frame,
+                DesktopWidth = frame.Width,
+                DesktopHeight = frame.Height,
+                X = 0,
+                Y = 0,
+                IsFullFrame = true
+            });
         }
 
         private sealed class FrameData
