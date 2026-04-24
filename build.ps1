@@ -31,6 +31,7 @@ $hostSources = @(
     (Join-Path $PSScriptRoot "Host\RemoteHostServer.cs")
     (Join-Path $PSScriptRoot "Host\InputInjector.cs")
     (Join-Path $PSScriptRoot "Host\ScreenStreamer.cs")
+    (Join-Path $PSScriptRoot "Host\DesktopDuplicationCapture.cs")
     (Join-Path $PSScriptRoot "Host\HostDiscoveryBroadcaster.cs")
 ) + $shared
 

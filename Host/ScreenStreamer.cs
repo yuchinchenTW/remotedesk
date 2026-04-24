@@ -12,6 +12,11 @@ using SimpleRemote.Shared;
 
 namespace SimpleRemote.Host
 {
+    internal interface IScreenCaptureBackend : IDisposable
+    {
+        bool TryCaptureFrame(out int desktopWidth, out int desktopHeight, out byte[] jpegBytes);
+    }
+
     internal static class ScreenStreamer
     {
         private static readonly ImageCodecInfo JpegCodec = ImageCodecInfo.GetImageEncoders().FirstOrDefault(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
@@ -19,7 +24,7 @@ namespace SimpleRemote.Host
         public static void StreamVirtualDesktop(NetworkStream stream, object writeSync, CancellationToken token, int fps)
         {
             using (var latestFrame = new LatestFrameStore())
-            using (var capturer = new GdiScreenCapture(1600, 38L))
+            using (var capturer = CreateCaptureBackend())
             {
                 Exception captureError = null;
                 var captureThread = new Thread(delegate()
@@ -32,8 +37,11 @@ namespace SimpleRemote.Host
                         {
                             int desktopWidth;
                             int desktopHeight;
-                            var jpeg = capturer.CaptureFrame(out desktopWidth, out desktopHeight);
-                            latestFrame.Update(desktopWidth, desktopHeight, jpeg);
+                            byte[] jpeg;
+                            if (capturer.TryCaptureFrame(out desktopWidth, out desktopHeight, out jpeg))
+                            {
+                                latestFrame.Update(desktopWidth, desktopHeight, jpeg);
+                            }
 
                             if (token.WaitHandle.WaitOne(frameDelay))
                             {
@@ -81,6 +89,22 @@ namespace SimpleRemote.Host
                     throw captureError;
                 }
             }
+        }
+
+        private static IScreenCaptureBackend CreateCaptureBackend()
+        {
+            if (Screen.AllScreens.Length == 1)
+            {
+                try
+                {
+                    return new DesktopDuplicationCapture(1600, 38L);
+                }
+                catch
+                {
+                }
+            }
+
+            return new GdiScreenCapture(1600, 38L);
         }
 
         private sealed class FrameData
@@ -161,7 +185,7 @@ namespace SimpleRemote.Host
             }
         }
 
-        private sealed class GdiScreenCapture : IDisposable
+        private sealed class GdiScreenCapture : IScreenCaptureBackend
         {
             private readonly long _jpegQuality;
             private readonly int _maxDimension;
@@ -182,7 +206,7 @@ namespace SimpleRemote.Host
                 _encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
             }
 
-            public byte[] CaptureFrame(out int desktopWidth, out int desktopHeight)
+            public bool TryCaptureFrame(out int desktopWidth, out int desktopHeight, out byte[] jpegBytes)
             {
                 var bounds = SystemInformation.VirtualScreen;
                 EnsureBuffers(bounds);
@@ -204,7 +228,8 @@ namespace SimpleRemote.Host
                     imageToEncode.Save(_jpegStream, ImageFormat.Jpeg);
                 }
 
-                return _jpegStream.ToArray();
+                jpegBytes = _jpegStream.ToArray();
+                return true;
             }
 
             public void Dispose()

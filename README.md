@@ -13,11 +13,13 @@ Windows LAN-only remote desktop MVP with two executables:
 - Hosts broadcast their presence over UDP on the local LAN, and viewers list discovered hosts automatically.
 - Protects access with a required password.
 - Reuses capture buffers, scales oversized desktops before encoding, and drops stale frames to keep latency lower.
+- On single-monitor hosts, it now prefers the Windows Desktop Duplication API for lower-latency capture and falls back to GDI if DXGI duplication is unavailable.
 
 ## Limits
 
 - One viewer at a time.
 - Auto-discovery is LAN-only and uses UDP broadcast, so it does not replace ZeroTier or internet-wide discovery.
+- Multi-monitor hosts currently keep using the older GDI capture path.
 - No NAT traversal, relay, audio, clipboard, file transfer, or UAC bypass.
 - For elevated windows, run `RemoteHost.exe` as administrator.
 
