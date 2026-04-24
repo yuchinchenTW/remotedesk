@@ -9,11 +9,20 @@ namespace SimpleRemote.Viewer
 {
     internal sealed class ViewerForm : Form
     {
+        private const double MinZoom = 0.25;
+        private const double MaxZoom = 4.0;
+        private const double ZoomStep = 1.25;
+
         private readonly TextBox _hostTextBox;
         private readonly TextBox _portTextBox;
         private readonly TextBox _passwordTextBox;
         private readonly Button _connectButton;
         private readonly Button _disconnectButton;
+        private readonly Button _zoomOutButton;
+        private readonly Button _zoomResetButton;
+        private readonly Button _zoomInButton;
+        private readonly Label _zoomLabel;
+        private readonly Panel _imagePanel;
         private readonly PictureBox _pictureBox;
         private readonly ListView _hostsListView;
         private readonly Label _statusLabel;
@@ -24,6 +33,7 @@ namespace SimpleRemote.Viewer
         private HostDiscoveryListener _discoveryListener;
         private Bitmap _currentFrame;
         private Size _remoteSize;
+        private double _zoomFactor = 1.0;
         private readonly Dictionary<string, DiscoveredHostInfo> _discoveredHosts = new Dictionary<string, DiscoveredHostInfo>();
 
         public ViewerForm()
@@ -108,6 +118,41 @@ namespace SimpleRemote.Viewer
             };
             _disconnectButton.Click += DisconnectButton_Click;
 
+            _zoomOutButton = new Button
+            {
+                Left = 850,
+                Top = 8,
+                Width = 34,
+                Text = "-"
+            };
+            _zoomOutButton.Click += ZoomOutButton_Click;
+
+            _zoomResetButton = new Button
+            {
+                Left = 888,
+                Top = 8,
+                Width = 58,
+                Text = "100%"
+            };
+            _zoomResetButton.Click += ZoomResetButton_Click;
+
+            _zoomInButton = new Button
+            {
+                Left = 950,
+                Top = 8,
+                Width = 34,
+                Text = "+"
+            };
+            _zoomInButton.Click += ZoomInButton_Click;
+
+            _zoomLabel = new Label
+            {
+                Left = 992,
+                Top = 14,
+                Width = 100,
+                Text = "Zoom: Fit"
+            };
+
             _statusLabel = new Label
             {
                 Left = 12,
@@ -123,7 +168,7 @@ namespace SimpleRemote.Viewer
                 Top = 64,
                 Width = 1280,
                 Height = 18,
-                Text = "Hosts on the same LAN auto-appear on the right. Ctrl+V sends local clipboard text to the remote PC."
+                Text = "Hosts on the same LAN auto-appear on the right. Ctrl+V sends local clipboard text to the remote PC. Ctrl+MouseWheel zooms."
             };
 
             topPanel.Controls.Add(hostLabel);
@@ -134,6 +179,10 @@ namespace SimpleRemote.Viewer
             topPanel.Controls.Add(_passwordTextBox);
             topPanel.Controls.Add(_connectButton);
             topPanel.Controls.Add(_disconnectButton);
+            topPanel.Controls.Add(_zoomOutButton);
+            topPanel.Controls.Add(_zoomResetButton);
+            topPanel.Controls.Add(_zoomInButton);
+            topPanel.Controls.Add(_zoomLabel);
             topPanel.Controls.Add(_statusLabel);
             topPanel.Controls.Add(_infoLabel);
 
@@ -153,11 +202,18 @@ namespace SimpleRemote.Viewer
             _hostsListView.SelectedIndexChanged += HostsListView_SelectedIndexChanged;
             _hostsListView.DoubleClick += HostsListView_DoubleClick;
 
-            _pictureBox = new PictureBox
+            _imagePanel = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.Black,
-                SizeMode = PictureBoxSizeMode.Zoom,
+                AutoScroll = true
+            };
+            _imagePanel.Resize += ImagePanel_Resize;
+
+            _pictureBox = new PictureBox
+            {
+                BackColor = Color.Black,
+                SizeMode = PictureBoxSizeMode.StretchImage,
                 TabStop = true
             };
             _pictureBox.MouseDown += PictureBox_MouseDown;
@@ -165,14 +221,18 @@ namespace SimpleRemote.Viewer
             _pictureBox.MouseMove += PictureBox_MouseMove;
             _pictureBox.MouseWheel += PictureBox_MouseWheel;
             _pictureBox.MouseClick += PictureBox_MouseClick;
+            _pictureBox.MouseEnter += PictureBox_MouseEnter;
+
+            _imagePanel.Controls.Add(_pictureBox);
 
             Controls.Add(topPanel);
-            Controls.Add(_pictureBox);
+            Controls.Add(_imagePanel);
             Controls.Add(_hostsListView);
 
             KeyDown += ViewerForm_KeyDown;
             KeyUp += ViewerForm_KeyUp;
             FormClosed += ViewerForm_FormClosed;
+            MouseWheel += ViewerForm_MouseWheel;
 
             _discoveryListener = new HostDiscoveryListener(OnHostDiscovered);
             _discoveryListener.Start();
@@ -181,6 +241,21 @@ namespace SimpleRemote.Viewer
             _discoveryRefreshTimer.Interval = 1000;
             _discoveryRefreshTimer.Tick += DiscoveryRefreshTimer_Tick;
             _discoveryRefreshTimer.Start();
+        }
+
+        private void ZoomOutButton_Click(object sender, EventArgs e)
+        {
+            ApplyZoom(_zoomFactor / ZoomStep);
+        }
+
+        private void ZoomResetButton_Click(object sender, EventArgs e)
+        {
+            ApplyZoom(1.0);
+        }
+
+        private void ZoomInButton_Click(object sender, EventArgs e)
+        {
+            ApplyZoom(_zoomFactor * ZoomStep);
         }
 
         private void ViewerForm_FormClosed(object sender, FormClosedEventArgs e)
@@ -285,6 +360,11 @@ namespace SimpleRemote.Viewer
             _pictureBox.Focus();
         }
 
+        private void PictureBox_MouseEnter(object sender, EventArgs e)
+        {
+            _pictureBox.Focus();
+        }
+
         private void PictureBox_MouseMove(object sender, MouseEventArgs e)
         {
             Point remotePoint;
@@ -331,6 +411,12 @@ namespace SimpleRemote.Viewer
 
         private void PictureBox_MouseWheel(object sender, MouseEventArgs e)
         {
+            if ((ModifierKeys & Keys.Control) == Keys.Control)
+            {
+                ApplyZoom(e.Delta > 0 ? _zoomFactor * ZoomStep : _zoomFactor / ZoomStep);
+                return;
+            }
+
             Point remotePoint;
             if (!TryTranslatePoint(e.Location, out remotePoint))
             {
@@ -341,6 +427,16 @@ namespace SimpleRemote.Viewer
             {
                 _client.SendMouseWheel(remotePoint.X, remotePoint.Y, e.Delta);
             }
+        }
+
+        private void ViewerForm_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if ((ModifierKeys & Keys.Control) != Keys.Control)
+            {
+                return;
+            }
+
+            ApplyZoom(e.Delta > 0 ? _zoomFactor * ZoomStep : _zoomFactor / ZoomStep);
         }
 
         private void ViewerForm_KeyDown(object sender, KeyEventArgs e)
@@ -438,6 +534,7 @@ namespace SimpleRemote.Viewer
                 var previous = _currentFrame;
                 _currentFrame = update.Image;
                 _pictureBox.Image = _currentFrame;
+                UpdateImageLayout();
 
                 if (previous != null)
                 {
@@ -454,6 +551,7 @@ namespace SimpleRemote.Viewer
 
             update.Image.Dispose();
             _pictureBox.Invalidate();
+            UpdateImageLayout();
         }
 
         private void ResetConnection()
@@ -548,14 +646,13 @@ namespace SimpleRemote.Viewer
                 return false;
             }
 
-            var imageRect = GetImageRectangle(_pictureBox.ClientSize, _remoteSize);
-            if (!imageRect.Contains(localPoint))
+            if (localPoint.X < 0 || localPoint.Y < 0 || localPoint.X >= _pictureBox.Width || localPoint.Y >= _pictureBox.Height)
             {
                 return false;
             }
 
-            var xRatio = (double)(localPoint.X - imageRect.X) / imageRect.Width;
-            var yRatio = (double)(localPoint.Y - imageRect.Y) / imageRect.Height;
+            var xRatio = (double)localPoint.X / _pictureBox.Width;
+            var yRatio = (double)localPoint.Y / _pictureBox.Height;
 
             var remoteX = Math.Max(0, Math.Min(_remoteSize.Width - 1, (int)Math.Round(xRatio * (_remoteSize.Width - 1))));
             var remoteY = Math.Max(0, Math.Min(_remoteSize.Height - 1, (int)Math.Round(yRatio * (_remoteSize.Height - 1))));
@@ -564,23 +661,39 @@ namespace SimpleRemote.Viewer
             return true;
         }
 
-        private static Rectangle GetImageRectangle(Size box, Size image)
+        private void ImagePanel_Resize(object sender, EventArgs e)
         {
-            var imageAspect = (double)image.Width / image.Height;
-            var boxAspect = (double)box.Width / box.Height;
+            UpdateImageLayout();
+        }
 
-            if (boxAspect > imageAspect)
+        private void ApplyZoom(double zoomFactor)
+        {
+            _zoomFactor = Math.Max(MinZoom, Math.Min(MaxZoom, zoomFactor));
+            UpdateImageLayout();
+        }
+
+        private void UpdateImageLayout()
+        {
+            if (_currentFrame == null || _remoteSize.Width <= 0 || _remoteSize.Height <= 0)
             {
-                var height = box.Height;
-                var width = (int)Math.Round(height * imageAspect);
-                var x = (box.Width - width) / 2;
-                return new Rectangle(x, 0, Math.Max(1, width), Math.Max(1, height));
+                _zoomLabel.Text = "Zoom: Fit";
+                return;
             }
 
-            var finalWidth = box.Width;
-            var finalHeight = (int)Math.Round(finalWidth / imageAspect);
-            var y = (box.Height - finalHeight) / 2;
-            return new Rectangle(0, y, Math.Max(1, finalWidth), Math.Max(1, finalHeight));
+            var viewportWidth = Math.Max(1, _imagePanel.ClientSize.Width);
+            var viewportHeight = Math.Max(1, _imagePanel.ClientSize.Height);
+            var fitScale = Math.Min((double)viewportWidth / _remoteSize.Width, (double)viewportHeight / _remoteSize.Height);
+            fitScale = Math.Min(1.0, fitScale);
+
+            var displayScale = fitScale * _zoomFactor;
+            var displayWidth = Math.Max(1, (int)Math.Round(_remoteSize.Width * displayScale));
+            var displayHeight = Math.Max(1, (int)Math.Round(_remoteSize.Height * displayScale));
+
+            _pictureBox.Size = new Size(displayWidth, displayHeight);
+            _pictureBox.Location = new Point(
+                Math.Max(0, (viewportWidth - displayWidth) / 2),
+                Math.Max(0, (viewportHeight - displayHeight) / 2));
+            _zoomLabel.Text = "Zoom: " + (int)Math.Round(_zoomFactor * 100) + "%";
         }
 
         private static MouseButtonCode TranslateButton(MouseButtons button)
