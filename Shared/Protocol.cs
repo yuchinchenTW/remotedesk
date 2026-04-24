@@ -19,7 +19,8 @@ namespace SimpleRemote.Shared
         MouseUp = 3,
         MouseWheel = 4,
         KeyDown = 5,
-        KeyUp = 6
+        KeyUp = 6,
+        PasteText = 7
     }
 
     public enum MouseButtonCode : byte

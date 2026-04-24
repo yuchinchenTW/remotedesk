@@ -117,7 +117,7 @@ namespace SimpleRemote.Viewer
                 Top = 64,
                 Width = 1080,
                 Height = 18,
-                Text = "Click inside the remote image before using the keyboard. Multi-monitor hosts are shown as one combined desktop."
+                Text = "Click inside the remote image before using the keyboard. Ctrl+V sends local clipboard text to the remote PC."
             };
 
             topPanel.Controls.Add(hostLabel);
@@ -271,6 +271,24 @@ namespace SimpleRemote.Viewer
         {
             if (_client != null && _pictureBox.Focused)
             {
+                if (e.Control && e.KeyCode == Keys.V)
+                {
+                    var text = Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        _client.SendClipboardText(text);
+                        UpdateStatus("Sent local clipboard text to remote host.");
+                    }
+                    else
+                    {
+                        UpdateStatus("Local clipboard does not contain text.");
+                    }
+
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    return;
+                }
+
                 _client.SendKey(e.KeyValue, true);
                 e.Handled = true;
             }

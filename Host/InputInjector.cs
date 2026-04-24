@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 using SimpleRemote.Shared;
 
@@ -140,10 +141,61 @@ namespace SimpleRemote.Host
             Send(input);
         }
 
+        public static void PasteText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            RunStaClipboardAction(delegate()
+            {
+                Clipboard.SetText(text);
+            });
+
+            Thread.Sleep(30);
+            Key((int)Keys.ControlKey, true);
+            Key((int)Keys.V, true);
+            Key((int)Keys.V, false);
+            Key((int)Keys.ControlKey, false);
+        }
+
         private static void Send(INPUT input)
         {
             var inputs = new[] { input };
             SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        private static void RunStaClipboardAction(ThreadStart action)
+        {
+            Exception failure = null;
+            var done = new ManualResetEvent(false);
+            var thread = new Thread(delegate()
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+                finally
+                {
+                    done.Set();
+                }
+            });
+
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.IsBackground = true;
+            thread.Start();
+            done.WaitOne();
+            done.Dispose();
+
+            if (failure != null)
+            {
+                throw failure;
+            }
         }
 
         private static int Clamp(int value, int min, int max)

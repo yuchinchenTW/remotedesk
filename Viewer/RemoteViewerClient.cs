@@ -159,6 +159,20 @@ namespace SimpleRemote.Viewer
             });
         }
 
+        public void SendClipboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            SendInput(delegate(BinaryWriter writer)
+            {
+                writer.Write((byte)InputCommandType.PasteText);
+                writer.Write(text);
+            });
+        }
+
         private void SendInput(Action<BinaryWriter> writePayload)
         {
             if (!IsConnected)

@@ -9,6 +9,7 @@ Windows LAN-only remote desktop MVP with two executables:
 
 - Streams the full virtual desktop as JPEG frames over TCP, so dual-monitor setups are shown as one combined image.
 - Forwards mouse move, click, wheel, and basic keyboard key down/up events.
+- `Ctrl+V` in the viewer sends local clipboard text to the remote PC and triggers paste there.
 - Protects access with a required password.
 - Reuses capture buffers, scales oversized desktops before encoding, and drops stale frames to keep latency lower.
 

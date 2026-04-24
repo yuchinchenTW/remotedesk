@@ -263,6 +263,10 @@ namespace SimpleRemote.Host
                         case InputCommandType.KeyUp:
                             InputInjector.Key(reader.ReadInt32(), false);
                             break;
+
+                        case InputCommandType.PasteText:
+                            InputInjector.PasteText(reader.ReadString());
+                            break;
                     }
                 }
             }
