@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using SimpleRemote.Shared;
@@ -213,10 +214,11 @@ namespace SimpleRemote.Viewer
             _pictureBox = new PictureBox
             {
                 BackColor = Color.Black,
-                SizeMode = PictureBoxSizeMode.StretchImage,
+                SizeMode = PictureBoxSizeMode.Normal,
                 TabStop = true,
                 Location = Point.Empty
             };
+            _pictureBox.Paint += PictureBox_Paint;
             _pictureBox.MouseDown += PictureBox_MouseDown;
             _pictureBox.MouseUp += PictureBox_MouseUp;
             _pictureBox.MouseMove += PictureBox_MouseMove;
@@ -364,6 +366,24 @@ namespace SimpleRemote.Viewer
         private void PictureBox_MouseEnter(object sender, EventArgs e)
         {
             _pictureBox.Focus();
+        }
+
+        private void PictureBox_Paint(object sender, PaintEventArgs e)
+        {
+            if (_currentFrame == null || _pictureBox.Width <= 0 || _pictureBox.Height <= 0)
+            {
+                return;
+            }
+
+            var isUpscaling = _pictureBox.Width > _currentFrame.Width || _pictureBox.Height > _currentFrame.Height;
+            e.Graphics.CompositingMode = CompositingMode.SourceCopy;
+            e.Graphics.CompositingQuality = CompositingQuality.HighSpeed;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
+            e.Graphics.SmoothingMode = SmoothingMode.None;
+            e.Graphics.InterpolationMode = isUpscaling
+                ? InterpolationMode.NearestNeighbor
+                : InterpolationMode.HighQualityBicubic;
+            e.Graphics.DrawImage(_currentFrame, new Rectangle(0, 0, _pictureBox.Width, _pictureBox.Height));
         }
 
         private void PictureBox_MouseMove(object sender, MouseEventArgs e)
@@ -535,7 +555,7 @@ namespace SimpleRemote.Viewer
             {
                 var previous = _currentFrame;
                 _currentFrame = update.Image;
-                _pictureBox.Image = _currentFrame;
+                _pictureBox.Image = null;
 
                 if (previous == null || remoteSizeChanged)
                 {
