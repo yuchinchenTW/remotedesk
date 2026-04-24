@@ -214,6 +214,12 @@ namespace SimpleRemote.Host
                         {
                             if (ffmpegStreamer != null)
                             {
+                                var desktopBounds = Screen.PrimaryScreen.Bounds;
+                                Protocol.SendMessage(stream, writeSync, MessageType.VideoConfig, delegate(BinaryWriter writer)
+                                {
+                                    writer.Write(desktopBounds.Width);
+                                    writer.Write(desktopBounds.Height);
+                                });
                                 _statusCallback("Streaming H.264 video over ffmpeg.");
                                 ffmpegStreamer.Stream(stream, writeSync, _sessionTokenSource.Token);
                                 return;

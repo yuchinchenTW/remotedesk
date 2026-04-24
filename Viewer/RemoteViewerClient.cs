@@ -28,6 +28,8 @@ namespace SimpleRemote.Viewer
         private TcpClient _client;
         private Thread _receiveThread;
         private Thread _decodeThread;
+        private int _videoDesktopWidth;
+        private int _videoDesktopHeight;
         private volatile bool _running;
 
         public RemoteViewerClient(Action<string> statusCallback, Action<FrameUpdate> frameCallback)
@@ -219,6 +221,17 @@ namespace SimpleRemote.Viewer
                 {
                     var message = Protocol.ReceiveMessage(stream);
 
+                    if (message.Type == MessageType.VideoConfig)
+                    {
+                        using (var reader = Protocol.CreateReader(message.Payload))
+                        {
+                            _videoDesktopWidth = reader.ReadInt32();
+                            _videoDesktopHeight = reader.ReadInt32();
+                        }
+
+                        continue;
+                    }
+
                     if (message.Type == MessageType.VideoChunk)
                     {
                         EnsureVideoDecoder();
@@ -314,8 +327,8 @@ namespace SimpleRemote.Viewer
             _frameCallback(new FrameUpdate
             {
                 Image = frame,
-                DesktopWidth = frame.Width,
-                DesktopHeight = frame.Height,
+                DesktopWidth = _videoDesktopWidth > 0 ? _videoDesktopWidth : frame.Width,
+                DesktopHeight = _videoDesktopHeight > 0 ? _videoDesktopHeight : frame.Height,
                 X = 0,
                 Y = 0,
                 IsFullFrame = true
